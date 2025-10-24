@@ -1,4 +1,4 @@
-use rand::prelude::random;
+use rand::random;
 pub use rand::seq::SliceRandom;
 pub use rand::SeedableRng;
 pub use rand_chacha::ChaCha20Rng;
