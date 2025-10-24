@@ -5,6 +5,7 @@ use crate::pile::{Mark, Pile as BasePile};
 use crate::rng::Seed;
 use crate::score::Score;
 use std::ffi::{c_char, CStr, CString};
+use wasm_bindgen::prelude::*;
 
 /// API level card pile data
 #[repr(C)]
@@ -112,6 +113,7 @@ impl Scorecard {
 /// This function dereferences a raw pointer. If this pointer does not point to a valid Seed
 /// struct, this function will fail.
 #[no_mangle]
+#[wasm_bindgen]
 pub unsafe extern "C" fn new_game(seed: *const Seed) -> Box<Game> {
     let mut g = Game::default();
     if !seed.is_null() {
@@ -123,6 +125,7 @@ pub unsafe extern "C" fn new_game(seed: *const Seed) -> Box<Game> {
 
 /// Get the status signals for a game
 #[no_mangle]
+#[wasm_bindgen]
 #[allow(clippy::borrowed_box)]
 pub extern "C" fn status(g: &Box<Game>) -> Box<Status> {
     Box::new(Status {
@@ -137,6 +140,7 @@ pub extern "C" fn status(g: &Box<Game>) -> Box<Status> {
 
 /// Read both player's hands, the current player's first
 #[no_mangle]
+#[wasm_bindgen]
 #[allow(clippy::borrowed_box)]
 pub extern "C" fn read_hands(g: &Box<Game>) -> Box<[u8; 16]> {
     let mut cards = [0; 16];
@@ -160,6 +164,7 @@ pub extern "C" fn read_hands(g: &Box<Game>) -> Box<[u8; 16]> {
 
 /// Read the current floor piles
 #[no_mangle]
+#[wasm_bindgen]
 #[allow(clippy::borrowed_box)]
 pub extern "C" fn read_floor(g: &Box<Game>) -> Box<[Pile; 13]> {
     let mut piles = [Pile::default(); 13];
@@ -181,6 +186,7 @@ pub extern "C" fn read_floor(g: &Box<Game>) -> Box<[Pile; 13]> {
 ///
 /// This function calls `std::ffi::CStr::from_ptr`, which is an unsafe function.
 #[no_mangle]
+#[wasm_bindgen]
 pub unsafe extern "C" fn apply_move(g: &mut Box<Game>, a: *const c_char) -> *const c_char {
     CString::new(
         if let Ok(annotation) = unsafe { CStr::from_ptr(a) }.to_str() {
@@ -204,18 +210,21 @@ pub unsafe extern "C" fn apply_move(g: &mut Box<Game>, a: *const c_char) -> *con
 
 /// End the current player's turn
 #[no_mangle]
+#[wasm_bindgen]
 pub extern "C" fn next_turn(g: &mut Box<Game>) {
     g.tick();
 }
 
 /// Undo the most recent move
 #[no_mangle]
+#[wasm_bindgen]
 pub extern "C" fn undo(g: &mut Box<Game>) {
     g.undo();
 }
 
 /// Get an array of score cards for the completed games
 #[no_mangle]
+#[wasm_bindgen]
 #[allow(clippy::borrowed_box)]
 pub extern "C" fn get_scores(g: &Box<Game>) -> Box<[Scorecard; 4]> {
     let mut scores = [Scorecard::default(); 4];
