@@ -9,6 +9,7 @@ use wasm_bindgen::prelude::*;
 
 /// API level card pile data
 #[repr(C)]
+#[wasm_bindgen]
 #[derive(Copy, Clone)]
 pub struct Pile {
     pub cards: [u8; 20],
@@ -56,6 +57,7 @@ impl From<Pile> for BasePile {
 
 /// Game status and telemetry
 #[repr(C)]
+#[wasm_bindgen]
 pub struct Status {
     pub game: u8,
     pub round: u8,
@@ -67,6 +69,7 @@ pub struct Status {
 
 /// API level player scorecard
 #[repr(C)]
+#[wasm_bindgen]
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Scorecard {
     pub aces: u8,
