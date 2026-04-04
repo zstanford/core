@@ -1,0 +1,3 @@
+module github.com/playsuipi/main
+
+go 1.26.1
