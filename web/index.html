@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173f37">
+  <meta name="description" content="Bring the family table with you. Play Samoan Suipi with a friend on the same device.">
+  <title>Suipi — The Family Table</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="wordmark" href="./" aria-label="Suipi home"><span class="mark">✳</span> suipi<span class="wordmark-dot">.</span></a>
+    <span class="top-note">THE FAMILY TABLE</span>
+    <nav aria-label="Game controls"><button id="rules-button" class="quiet">How to play</button><button id="scores-button" class="quiet">Scores</button><button id="new-button" class="outline">New match <span aria-hidden="true">↗</span></button></nav>
+  </header>
+  <main>
+    <section class="intro"><div><p class="eyebrow"><span class="live-dot"></span> SAME DEVICE · TWO PLAYERS</p><h1>A little strategy.<br>A lot of <em>Suipi.</em></h1></div><p class="intro-note">Pull up a seat. Match, build, and sweep.<br>Pass the device when your turn is done.</p></section>
+    <section class="game-shell" aria-label="Suipi game">
+      <div class="matchbar"><span id="match-label">Loading table…</span><span id="deck-label"></span><span class="save-label" id="save-label">Saved on this device</span></div>
+      <div class="table">
+        <div class="opponent-strip"><div class="avatar" id="other-avatar">2</div><div><strong id="other-name">Player 2</strong><span id="other-meta">Waiting for the deal</span></div><div class="cardbacks" id="cardbacks" aria-hidden="true"></div><span class="table-pill" id="other-points">0 pts</span></div>
+        <div class="floor-heading"><span>THE TABLE</span><span id="floor-count">4 cards in play</span></div>
+        <div id="floor" class="floor" aria-label="Cards on the table"></div>
+        <div class="table-foot"><span><span class="tiny-star">✳</span> Clear the table. Call Suipi.</span><span id="turn-label"></span></div>
+        <div id="sweep" class="sweep" aria-hidden="true">Suipi!<small>A clean sweep.</small></div>
+      </div>
+      <section class="hand-section" aria-label="Your hand">
+        <div class="hand-heading"><div><span class="avatar small" id="your-avatar">1</span><div><strong id="your-name">Player 1</strong><span id="your-meta">Your hand</span></div></div><span id="your-points">0 pts</span></div>
+        <div id="hand" class="hand"></div>
+        <div class="action-panel"><div class="mode-switch" role="group" aria-label="Move type"><button data-kind="capture" aria-pressed="true">Capture</button><button data-kind="build" aria-pressed="false">Build / group</button><button data-kind="discard" aria-pressed="false">Drop</button></div><button id="clear-button" class="quiet">Clear selection</button></div>
+        <div class="move-panel"><div><p id="move-title">Choose a card from your hand</p><p id="move-detail">Then select table cards to capture or build.</p></div><div id="choices"></div></div>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+      <div id="curtain" class="curtain"><div class="curtain-symbol">✳</div><p class="eyebrow" id="curtain-kicker">THE TABLE IS READY</p><h2 id="curtain-title">Player 1, your turn.</h2><p id="curtain-description">Keep your hand to yourself.<br>Tap below when the device is yours.</p><button id="reveal-button" class="primary">Show my hand <span aria-hidden="true">→</span></button></div>
+    </section>
+    <footer><span>Made for good company.</span><span>Rules powered by <a href="https://github.com/playsuipi/core" target="_blank" rel="noopener">Play Suipi Core</a> · <a href="LICENSE.txt" target="_blank">Apache 2.0</a></span></footer>
+  </main>
+  <dialog id="rules-dialog"><button class="dialog-close" aria-label="Close rules">×</button><p class="eyebrow">WELCOME TO THE TABLE</p><h2>How to play Suipi</h2><p>Each player gets eight cards. Four cards start on the table. Play one hand card per turn.</p><div class="rule-row"><b>01 · Capture</b><p>Match a table card, or take cards whose values add up to your hand card. A 9 can take a 5 and a 4. Select all cards you want to take.</p></div><div class="rule-row"><b>02 · Build & group</b><p>Add your hand card to table cards, keeping a card that can capture the result. Combine equal-value builds into a locked group. The table shows each pile’s value and owner. Your opponent can capture your pile.</p></div><div class="rule-row"><b>03 · Drop</b><p>Place a card on the table when legal. You cannot drop a matching table value or drop while you own a build.</p></div><div class="rule-row"><b>04 · Suipi!</b><p>Capture every card on the table to earn a sweep. After three deals, remaining table cards go to the last player to capture.</p></div><h3>Points</h3><p>Most cards: 3 · 10♦: 2 · 2♠: 1 · Most spades: 1 · Each ace: 1. The engine awards the difference in sweep counts as a bonus to the player with more sweeps. Tied card counts earn no majority points.</p><p>Play two games, taking turns as dealer. Highest combined score wins. Scores during a game are provisional.</p><button class="primary dialog-close-button">Back to the table</button></dialog>
+  <dialog id="scores-dialog"><button class="dialog-close" aria-label="Close scores">×</button><p class="eyebrow">EVERY CARD COUNTS</p><h2 id="scores-title">Match scores</h2><div id="score-content"></div><button class="primary dialog-close-button">Back to the table</button></dialog>
+  <dialog id="new-dialog"><button class="dialog-close" aria-label="Close new match dialog">×</button><p class="eyebrow">A FRESH DEAL</p><h2>Start a new match?</h2><p>Your current match will be replaced. Two games, alternating dealers, one winner.</p><button id="confirm-new" class="primary">Shuffle & deal →</button><button class="quiet dialog-close-button">Keep playing</button></dialog>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -16,3 +16,7 @@ Cargo.lock
 log.txt
 seed.txt
 .ccls-cache/**
+
+# Browser build output
+/dist/
+/web/engine/target/
