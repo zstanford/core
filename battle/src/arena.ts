@@ -389,13 +389,34 @@ export class Arena {
     const color=event.actor===0?cyan:pink;
     const selected=this.units.filter(u=>(u.area==='floor'&&event.floor.includes(u.index))||(u.area==='hand'&&event.actor===0&&u.index===event.hand));
     if(event.kind==='capture'){
-      for(const unit of selected){(unit.solid.material as StandardMaterial).emissiveColor=unit.color.scale(.65);}
-      const center=new Vector3(0,1,1);this.tone(310,.4);
-      await this.tween(event.actor===1?850:450,t=>selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(u.layoutScale*(1-.65*t));u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;}));
-      const projectile=this.solid('captured-energy',event.value,this.sizeFor(event.value));projectile.position=center.clone();projectile.material=this.material('capture-material',this.colorFor([event.card]));projectile.isPickable=false;
-      const target=this.cores[event.actor].position.clone(),path=MeshBuilder.CreateLines('collection-trail',{points:[center,target]},this.scene);path.color=color;path.alpha=.35;path.isPickable=false;
-      await this.tween(event.actor===1?950:600,t=>{projectile.position=Vector3.Lerp(center,target,t*t);projectile.rotation.y=t*6;});
-      projectile.dispose(false,true);path.dispose();this.burst(target,color);this.tone(event.sweep?95:180,.4);
+      const target=this.cores[event.actor].position.clone();
+      const origins=selected.map(unit=>({unit,center:unit.solid.getAbsolutePosition().clone(),scale:unit.node.scaling.x}));
+      const field=origins.filter(o=>o.unit.area==='floor');
+      const captureSite=droppedCenter??field[0]?.center.clone()??target.clone();
+      // The computer's played shape starts at the capture site, alongside its targets.
+      const played=event.actor===1?this.solid('capturing-shape',event.value,this.sizeFor(event.value,.7)):null;
+      const playedOrigin=captureSite.add(new Vector3(0,.45,0));
+      if(played){played.position.copyFrom(playedOrigin);played.material=this.material('capturing-shape-material',this.colorFor([event.card]));played.isPickable=false;}
+      this.tone(310,.4);
+      // Keep the slower pacing, but hold at each actual capture position.
+      await this.tween(event.actor===1?450:250,t=>{
+        for(const {unit} of origins)(unit.solid.material as StandardMaterial).emissiveColor=unit.color.scale(.65+Math.sin(t*Math.PI)*.2);
+      });
+      const paths=field.map(({center})=>{
+        const path=MeshBuilder.CreateLines('collection-trail',{points:[center,target]},this.scene);path.color=color;path.alpha=.3;path.isPickable=false;return path;
+      });
+      for(const {unit} of origins)unit.ring.visibility=0;
+      await this.tween(event.actor===1?1350:800,t=>{
+        const eased=t*t*(3-2*t);
+        for(const {unit,center,scale} of origins){
+          const size=scale*(1-.75*t),position=Vector3.Lerp(center,target,eased);
+          unit.node.scaling.setAll(size);position.y-=unit.solid.position.y*size;unit.node.position.copyFrom(position);
+          unit.label.visibility=1-t;if(unit.pips)unit.pips.visibility=1-t;
+        }
+        if(played){played.position.copyFrom(Vector3.Lerp(playedOrigin,target,eased));played.scaling.setAll(1-.75*t);played.rotation.y=t*4;}
+      });
+      origins.forEach(({unit})=>unit.node.setEnabled(false));played?.dispose(false,true);paths.forEach(path=>path.dispose());
+      this.burst(target,color);this.tone(event.sweep?95:180,.4);
       if(event.sweep){const wave=MeshBuilder.CreateTorus('suipi-wave',{diameter:1,thickness:.04,tessellation:96},this.scene);wave.position.y=.15;wave.material=this.material('wave-material',color);wave.isPickable=false;await this.tween(450,t=>{wave.scaling.setAll(.3+t*15);wave.visibility=1-t;});wave.dispose(false,true);}
     }else if(event.kind==='build'){
       const field=selected.filter(u=>u.area==='floor'),center=field[0]?.base.clone()??new Vector3(0,0,1);
