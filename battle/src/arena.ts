@@ -275,6 +275,9 @@ export class Arena {
   private environment() {
     const platform=MeshBuilder.CreateCylinder('platform',{diameter:13,height:.16,tessellation:96},this.scene);
     platform.position.y=-.25;platform.material=this.material('platform',Color3.FromHexString('#152039'),false);platform.isPickable=false;
+    // Draw the translucent surface before raised pieces, independent of camera distance.
+    // Otherwise distance sorting can paint the table over the outside turn rings.
+    platform.alphaIndex=-1;
     this.circle('boundary',6.35,-.15,0,cyan,.6);this.circle('inner',5.9,-.14,0,cyan,.18);this.circle('center',2,-.13,0,neutral,.18);
     for(let x=-6;x<=6;x++){
       const h=Math.sqrt(36-x*x);this.lines('grid-x',[new Vector3(x,-.15,-h),new Vector3(x,-.15,h)],neutral,.16);
