@@ -77,7 +77,7 @@ export class Arena {
     const sources=this.units.filter(u=>u.area==='floor'&&move.floor.includes(u.index));
     const color=move.kind==='build'&&sources.some(u=>!u.color.equals(source.color))?neutral:source.color;
     const node=new TransformNode('pending-move',this.scene);node.position=base;this.draftNode=node;
-    const solid=this.solid('pending-result',value,this.sizeFor(value));solid.parent=node;solid.position.y=1.1;solid.material=this.material('pending-material',color);(solid.material as StandardMaterial).alpha=.6;solid.enableEdgesRendering();solid.edgesColor=new Color4(color.r,color.g,color.b,.8);solid.edgesWidth=2;solid.isPickable=false;solid.renderingGroupId=1;
+    const solid=this.solid('pending-result',value,this.sizeFor(value));solid.parent=node;solid.position.y=1.1;solid.material=this.shapeMaterial('pending-material',color);(solid.material as StandardMaterial).alpha=.18;solid.enableEdgesRendering();solid.edgesColor=new Color4(color.r,color.g,color.b,.8);solid.edgesWidth=2;solid.isPickable=false;solid.renderingGroupId=1;
     const ring=MeshBuilder.CreateTorus('pending-ring',{diameter:1.75,thickness:.035,tessellation:64},this.scene);ring.parent=node;ring.position.y=.06;ring.material=this.material('pending-ring-material',cyan);ring.isPickable=false;ring.renderingGroupId=1;
     const label=this.textPlane('pending-energy',String(value),128,128,value>=10?82:112);label.parent=node;label.position.y=1.1;label.scaling.setAll(.48);
     const marks=pointMarks(move.kind==='build'?[...source.cards,...sources.flatMap(u=>u.cards)]:source.cards);
@@ -266,6 +266,11 @@ export class Arena {
   private material(name:string,color:Color3,glowing=true) {
     const m=new StandardMaterial(name,this.scene);m.diffuseColor=color.scale(.22);m.specularColor=color.scale(.4);m.emissiveColor=color.scale(glowing?.42:.05);m.alpha=.88;return m;
   }
+  private shapeMaterial(name:string,color:Color3){
+    const material=this.material(name,color);
+    material.alpha=.32;
+    return material;
+  }
   private lines(name:string,points:Vector3[],color:Color3,alpha=.3) {
     const mesh=MeshBuilder.CreateLines(name,{points},this.scene);mesh.color=color.scale(alpha);mesh.alpha=1;this.glow.addExcludedMesh(mesh);mesh.isPickable=false;return mesh;
   }
@@ -350,7 +355,7 @@ export class Arena {
     const solid=this.solid('shape-'+area+index,value,size);solid.parent=node;solid.position.y=.85;solid.rotation.x=.14;solid.rotation.y=value*.4;
     const extent=solid.getBoundingInfo().boundingBox.extendSize,radius=Math.max(extent.x,extent.y,extent.z);
     if(area==='hand')solid.renderingGroupId=1;
-    solid.material=this.material('shape-material',color);solid.enableEdgesRendering();solid.edgesWidth=1.8;solid.edgesColor=new Color4(color.r,color.g,color.b,1);solid.metadata={area,index};
+    solid.material=this.shapeMaterial('shape-material',color);solid.enableEdgesRendering();solid.edgesWidth=1.8;solid.edgesColor=new Color4(color.r,color.g,color.b,1);solid.metadata={area,index};
     const ring=MeshBuilder.CreateTorus('selection',{diameter:area==='hand'?radius*2.3:1.65*scale,thickness:owner===null?.018:.035,tessellation:48},this.scene);ring.parent=node;ring.position.y=area==='hand'?.85-radius*.6:.01;ring.material=this.material('ownership-material',owner===1?pink:owner===0?cyan:neutral);ring.isPickable=false;
     const pick=MeshBuilder.CreateSphere('pick-target',{diameter:area==='hand'?size*2.5:1.65*scale,segments:8},this.scene);pick.parent=node;pick.position.y=.85;pick.visibility=0;pick.metadata={area,index};
     if(area==='hand'){ring.renderingGroupId=1;pick.renderingGroupId=1;}
@@ -400,7 +405,7 @@ export class Arena {
       // The computer's played shape starts at the capture site, alongside its targets.
       const played=event.actor===1?this.solid('capturing-shape',event.value,this.sizeFor(event.value,.7)):null;
       const playedOrigin=captureSite.add(new Vector3(0,.45,0));
-      if(played){played.position.copyFrom(playedOrigin);played.material=this.material('capturing-shape-material',this.colorFor([event.card]));played.isPickable=false;}
+      if(played){played.position.copyFrom(playedOrigin);played.material=this.shapeMaterial('capturing-shape-material',this.colorFor([event.card]));played.isPickable=false;}
       this.tone(310,.4);
       // Keep the slower pacing, but hold at each actual capture position.
       await this.tween(event.actor===1?450:250,t=>{
@@ -426,19 +431,19 @@ export class Arena {
       const field=selected.filter(u=>u.area==='floor'),center=field[0]?.base.clone()??new Vector3(0,0,1);
       const combined=[event.card,...event.parts],resultColor=this.colorFor(combined);this.tone(520,.5);
       let ghost:Mesh|undefined;
-      if(event.actor===1){ghost=this.solid('forge-source',event.value,this.sizeFor(event.value,.72));ghost.position=new Vector3(0,.85,5.4);ghost.material=this.material('rival-source-material',this.colorFor([event.card]));ghost.isPickable=false;}
+      if(event.actor===1){ghost=this.solid('forge-source',event.value,this.sizeFor(event.value,.72));ghost.position=new Vector3(0,.85,5.4);ghost.material=this.shapeMaterial('rival-source-material',this.colorFor([event.card]));ghost.isPickable=false;}
       await this.tween(320,t=>{
         selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(u.layoutScale*(1-.6*t));u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;});
         if(ghost)ghost.position=Vector3.Lerp(new Vector3(0,.85,event.actor===0?-5.4:5.4),center.add(new Vector3(0,.85,0)),t);
       });
       selected.forEach(u=>u.node.setEnabled(false));ghost?.dispose(false,true);
-      const target=this.solid('morph-result',event.target??event.value,this.sizeFor(event.target??event.value));target.position=center.add(new Vector3(0,.85,0));target.rotation.x=.14;target.rotation.y=(event.target??event.value)*.4;target.material=this.material('morph-material',resultColor);target.isPickable=false;
+      const target=this.solid('morph-result',event.target??event.value,this.sizeFor(event.target??event.value));target.position=center.add(new Vector3(0,.85,0));target.rotation.x=.14;target.rotation.y=(event.target??event.value)*.4;target.material=this.shapeMaterial('morph-material',resultColor);target.isPickable=false;
       const vertices=target.getVerticesData(VertexBuffer.PositionKind)!;
       const original=Array.from(vertices),cloud=original.map((v,i)=>{const j=i-i%3;const length=Math.hypot(original[j],original[j+1],original[j+2])||1;return v/length*.16;});
       await this.tween(650,t=>{const eased=t*t*(3-2*t);target.updateVerticesData(VertexBuffer.PositionKind,original.map((v,i)=>cloud[i]+(v-cloud[i])*eased));target.scaling.setAll(.5+.5*t);});
       target.dispose(false,true);this.burst(center.add(new Vector3(0,.85,0)),resultColor);
     }else{
-      const shape=this.solid('deployment',event.value,this.sizeFor(event.value,.7));shape.material=this.material('deploy-material',this.colorFor([event.card]));shape.isPickable=false;
+      const shape=this.solid('deployment',event.value,this.sizeFor(event.value,.7));shape.material=this.shapeMaterial('deploy-material',this.colorFor([event.card]));shape.isPickable=false;
       const start=droppedCenter??new Vector3(0,1,event.actor===0?-4:4);
       await this.tween(350,t=>{shape.position=Vector3.Lerp(start,new Vector3(0,1,0),t);shape.position.y+=Math.sin(t*Math.PI)*.6;shape.rotation.y=t*4;});shape.dispose(false,true);
     }
