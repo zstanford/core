@@ -40,8 +40,8 @@ function render(){
  const field=el('field-choices');field.replaceChildren();
  for(const p of state.floor){
   const button=document.createElement('button');button.className='field-choice';button.dataset.index=String(p.index);button.style.setProperty('--suit',p.suit===null?'#aab5d6':suits[p.suit].color);
-  button.textContent=(p.suit===null?'◈':suits[p.suit].glyph)+' '+label(p.value)+' '+p.value+(p.locked?' ⊙':'')+(p.owner===0?' · A':p.owner===1?' · S':'');
-  button.setAttribute('aria-label',label(p.value)+' on field, energy '+p.value+', '+(p.suit===null?'mixed suits':suits[p.suit].name)+(p.owner!==null?', '+(p.owner===0?'your':'rival')+' build':'')+(p.locked?', locked':''));
+  button.textContent=label(p.value)+' '+p.value+(p.locked?' ⊙':'')+(p.owner===0?' · A':p.owner===1?' · S':'');
+  button.setAttribute('aria-label',label(p.value)+' on field, energy '+p.value+', '+(p.suit===null?'mixed colors':suits[p.suit].name)+(p.owner!==null?', '+(p.owner===0?'your':'rival')+' build':'')+(p.locked?', locked':''));
   button.title=p.parts.map(cardDescription).join('\n');button.disabled=busy||state.finished||state.roundOver;button.onclick=()=>select('floor',p.index);field.append(button);
  }
  if(!state.floor.length){const empty=document.createElement('span');empty.className='field-note';empty.textContent=state.finished?'Battlefield cleared.':'Clear field. Next player deploys.';field.append(empty);}
@@ -49,7 +49,7 @@ function render(){
  for(const shape of state.hand){
   const button=document.createElement('button');button.className='hand-choice';button.dataset.index=String(shape.index);button.style.setProperty('--suit',suits[shape.suit].color);
   button.setAttribute('aria-label',cardDescription(shape)+' in arsenal');
-  button.innerHTML='<span class="glyph" aria-hidden="true">'+shapes[shape.value].glyph+'</span><span class="name">'+label(shape.value)+' <span class="suit-glyph">'+suits[shape.suit].glyph+'</span></span><span class="energy">'+shape.value+' ENERGY'+(shape.points?' · '+shape.points+' PT'+(shape.points===1?'':'S'):'')+'</span><span class="point-marks">'+pointMarks([shape])+'</span>';
+  button.innerHTML='<span class="glyph" aria-hidden="true">'+shapes[shape.value].glyph+'</span><span class="name">'+label(shape.value)+'</span><span class="energy">'+shape.value+' ENERGY'+(shape.points?' · '+shape.points+' PT'+(shape.points===1?'':'S'):'')+'</span><span class="point-marks">'+pointMarks([shape])+'</span>';
   button.disabled=busy||state.finished||state.roundOver;button.onclick=()=>select('hand',shape.index);arsenal.append(button);
  }
  document.querySelectorAll<HTMLButtonElement>('[data-kind],#hint-button,#clear-button').forEach(b=>b.disabled=busy||state.finished||state.roundOver);
@@ -66,7 +66,7 @@ function renderSelection(){
  document.querySelectorAll<HTMLButtonElement>('[data-kind]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.kind===kind)));
  arena?.highlight(hand,floor);const options=el('move-options');options.replaceChildren();const detail=el('formation-detail');detail.replaceChildren();detail.hidden=true;
  const selected=state.floor.filter(p=>floor.includes(p.index));
- if(selected.length){detail.hidden=false;for(const p of selected){const row=document.createElement('p');row.textContent=label(p.value)+' '+p.value+(p.locked?' · locked':'')+' = '+p.parts.map(c=>suits[c.suit].glyph+' '+label(c.value)+' '+c.value+(c.points?' ['+pointMarks([c])+']':'')).join(' + ')+(p.points?' · '+p.points+' stored special points':'');detail.append(row);}}
+ if(selected.length){detail.hidden=false;for(const p of selected){const row=document.createElement('p');row.textContent=label(p.value)+' '+p.value+(p.locked?' · locked':'')+' = '+p.parts.map(c=>suits[c.suit].name+' '+label(c.value)+' '+c.value+(c.points?' ['+pointMarks([c])+']':'')).join(' + ')+(p.points?' · '+p.points+' stored special points':'');detail.append(row);}}
  if(busy){el('move-title').textContent='Energy in motion';el('move-detail').textContent='Your move and the rival response are resolving.';return;}
  if(state.finished){el('move-title').textContent='Three rounds complete';el('move-detail').textContent='Round wins '+state.roundWins.join('–')+'. Open Scorebook for the full point breakdown.';return;}
  if(state.roundOver){
@@ -80,7 +80,7 @@ function renderSelection(){
  if(!choices.length){el('move-detail').textContent=kind==='discard'?(floor.length?'Deselect field formations to deploy.':'Cannot duplicate a field energy or deploy while owning a build.'):!floor.length?'Select battlefield formations to use.':kind==='capture'?'Field energies must match your shape, individually or in sums.':'Keep a matching finisher. Builds reach at most 13. Locked values cannot change.';return;}
  for(const choice of choices){
   el('move-title').textContent=kind==='capture'?'Capture '+choice.captured+' shapes · lead shift '+signed(choice.shift):kind==='build'?'Morph into '+label(choice.target??card.value)+' '+choice.target:'Deploy '+shapeLabel(card);
-  el('move-detail').textContent=kind==='capture'?(choice.sweep?'Suipi! +1 sweep point. Preview includes changes to contested majorities.':'Point lead includes special shapes and changes to capture/gold majorities.'):kind==='build'?'Original suits and point marks stay inside. Ownership is marked separately.':'This original shape stays on the field. Either player can use it.';
+  el('move-detail').textContent=kind==='capture'?(choice.sweep?'Suipi! +1 sweep point. Preview includes changes to contested majorities.':'Point lead includes special shapes and changes to capture/gold majorities.'):kind==='build'?'Original colors and point marks stay inside. Ownership is marked separately.':'This original shape stays on the field. Either player can use it.';
   const b=document.createElement('button');b.className='primary';b.textContent=kind==='capture'?(choice.sweep?'Suipi capture':'Capture shapes')+' →':kind==='build'?'Forge '+choice.target+' →':'Deploy shape →';b.onclick=()=>void play({...request,annotation:choice.annotation});options.append(b);
  }
 }
@@ -106,7 +106,7 @@ function showScores(){
  const row=document.createElement('tr');for(const text of [name,String(state.scores[0][key]),String(state.scores[1][key])]){const cell=document.createElement('td');cell.textContent=text;row.append(cell);}body.append(row);}
  table.append(body);host.append(table);
  const note=document.createElement('p');note.textContent='Majority points are live: tied counts award none. There are 23 base points available, plus sweeps. Final leftover pickup occurs after round three.';host.append(note);
- for(const actor of [0,1] as const){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=(actor===0?'Astra':'Sentinel')+' · '+state.captures[actor]+' captured · '+state.scores[actor].gold+' gold';details.append(summary);const list=document.createElement('div');list.className='captured-list';for(const c of state.capturedCards[actor]){const chip=document.createElement('span');chip.style.color=suits[c.suit].color;chip.textContent=suits[c.suit].glyph+' '+c.value+(c.points?' '+pointMarks([c]):'');chip.title=cardDescription(c);list.append(chip);}details.append(list);host.append(details);}
+ for(const actor of [0,1] as const){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=(actor===0?'Astra':'Sentinel')+' · '+state.captures[actor]+' captured · '+state.scores[actor].gold+' gold';details.append(summary);const list=document.createElement('div');list.className='captured-list';for(const c of state.capturedCards[actor]){const chip=document.createElement('span');chip.style.color=suits[c.suit].color;chip.textContent=String(c.value)+(c.points?' '+pointMarks([c]):'');chip.title=cardDescription(c);list.append(chip);}details.append(list);host.append(details);}
  el<HTMLDialogElement>('score-dialog').showModal();
 }
 el('help-button').onclick=()=>el<HTMLDialogElement>('guide').showModal();el('score-button').onclick=()=>loaded&&showScores();el('new-button').onclick=()=>loaded&&el<HTMLDialogElement>('new-dialog').showModal();
@@ -117,7 +117,7 @@ el('camera-button').onclick=()=>arena?.resetCamera();el('clear-button').onclick=
 el('hint-button').onclick=()=>{if(!loaded||busy||state.finished||state.roundOver)return;const hint=rules.call<{hint:Move|null}>({type:'battle_hint'}).hint;if(hint){hand=hint.hand;floor=hint.floor;kind=hint.kind;renderSelection();el('combat-log').textContent='Legal move highlighted. Confirm when ready.';}};
 document.querySelectorAll<HTMLButtonElement>('[data-kind]').forEach(b=>b.onclick=()=>{if(!loaded)return;kind=b.dataset.kind as MoveKind;renderSelection();});
 for(const [value,s] of Object.entries(shapes)){const cell=document.createElement('div');cell.innerHTML='<span class="glyph" aria-hidden="true">'+s.glyph+'</span><span>'+value+' · '+s.name+'<small>'+s.description+'</small></span>';el('shape-guide').append(cell);}
-for(const s of suits){const chip=document.createElement('span');chip.style.color=s.color;chip.textContent=s.glyph+' '+s.name+' / '+s.classic;el('suit-guide').append(chip);}
+for(const s of suits){const chip=document.createElement('span');chip.style.color=s.color;chip.textContent=s.name;el('suit-guide').append(chip);}
 try{
  await rules.init();let restored=false;
  try{const saved=JSON.parse(localStorage.getItem(storage)??'null');if(saved){state=rules.call<{battle:BattleState}>({type:'battle_restore',...saved}).battle;restored=true;}}catch{}

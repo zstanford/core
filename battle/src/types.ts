@@ -14,10 +14,10 @@ export interface Move {hand:number;floor:number[];kind:MoveKind;annotation:strin
 export interface Choice {annotation:string;target?:number;label:string;points:number;shift:number;captured:number;sweep:boolean}
 export interface BattleEvent {actor:0|1;hand:number;kind:MoveKind;value:number;suit:number;card:ShapeCard;target?:number;shift:number;captured:number;sweep:boolean;floor:number[];parts:ShapeCard[];roundEnd:RoundResult|null;state:BattleState}
 export const suits=[
- {name:'Tide',classic:'Clubs',glyph:'♣',color:'#59e1ca'},
- {name:'Crystal',classic:'Diamonds',glyph:'♦',color:'#b1cdff'},
- {name:'Bloom',classic:'Hearts',glyph:'♥',color:'#e99ae5'},
- {name:'Gold',classic:'Spades',glyph:'♠',color:'#f2c55e'},
+ {name:'Tide',color:'#59e1ca'},
+ {name:'Crystal',color:'#b1cdff'},
+ {name:'Bloom',color:'#e99ae5'},
+ {name:'Gold',color:'#f2c55e'},
 ];
 export const shapes:Record<number,{name:string;glyph:string;description:string}>={
  1:{name:'Spark',glyph:'✦',description:'Luminous point / small sphere'},
@@ -39,5 +39,5 @@ export function pointMarks(cards:ShapeCard[]):string {
  const diamonds=cards.filter(c=>c.suit===1&&c.value>=10).reduce((n,c)=>n+c.points,0);
  const gold=cards.filter(c=>c.suit===3&&c.value===2).length;
  const ones=cards.filter(c=>c.value===1).length;
- return [diamonds>5?'◆×'+diamonds:'◆'.repeat(diamonds),'♠'.repeat(gold),'✦'.repeat(ones)].filter(Boolean).join(' ');
+ return [diamonds>5?'◆×'+diamonds:'◆'.repeat(diamonds),'•'.repeat(gold),'✦'.repeat(ones)].filter(Boolean).join(' ');
 }
