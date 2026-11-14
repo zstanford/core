@@ -8,9 +8,21 @@ const rules=new Rules();
 const storage='orbit-suipi-battle-v2';
 let arena:Arena|undefined,state:BattleState,hand:number|null=null,floor:number[]=[],kind:MoveKind='capture',busy=false,sound=false,loaded=false;
 let roundShown=0;
+let presentingActor:0|1=0,thinking=false;
 let bannerTimer:ReturnType<typeof setTimeout>;
 const label=(v:number)=>shapes[v]?.name??'Energy '+v;
 const signed=(n:number)=>(n>0?'+':'')+n;
+const pause=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
+function renderTurn(){
+ const active=state.finished||state.roundOver?null:busy?presentingActor:0;
+ arena?.setTurn(active);
+ document.querySelector<HTMLElement>('.battle')!.dataset.activePlayer=active===null?'none':active===0?'astra':'sentinel';
+ for(const [selector,actor] of [['.pilot.you',0],['.pilot.enemy',1]] as const){
+  const pilot=document.querySelector<HTMLElement>(selector)!;pilot.classList.toggle('is-active',active===actor);
+  pilot.setAttribute('aria-label',(actor===0?'Astra':'Sentinel')+(active===actor?' · active turn':''));
+ }
+ el('turn-label').textContent=state.finished?'Match complete':state.roundOver?'Round '+state.round+' complete':busy?(presentingActor===1?(thinking?'Sentinel is choosing…':'Sentinel is moving…'):'Astra resolving…'):'Your turn · Astra';
+}
 function save(){try{localStorage.setItem(storage,JSON.stringify(rules.call({type:'battle_save'})));el('save-status').textContent='SAVED ON DEVICE';}catch{el('save-status').textContent='SAVE UNAVAILABLE';}}
 function select(area:'hand'|'floor',index:number){
  if(!loaded||busy||state.finished||state.roundOver)return;
@@ -49,7 +61,7 @@ function render(){
   el(id+'-counts').textContent=state.captures[i]+' captured · '+state.scores[i].gold+' gold';
  }
  el('deck-count').textContent='Round '+state.round+' of 3 · '+state.deck+' in reserve';
- el('turn-label').textContent=state.finished?'Match complete':busy?'Resolving…':state.roundOver?'Round '+state.round+' complete':'Your turn · Astra';
+ renderTurn();
  el('arsenal-note').textContent=state.hand.length+' in hand · drag onto the field';
  el('formation-count').textContent=String(state.floor.length);
  const rival=el('rival-hand');rival.replaceChildren();for(let i=0;i<state.otherCount;i++){const mark=document.createElement('i');mark.setAttribute('aria-hidden','true');rival.append(mark);}const rivalCount=document.createElement('span');rivalCount.textContent=state.otherCount+' REMAINING';rival.append(rivalCount);
@@ -114,13 +126,23 @@ function renderSelection(){
 }
 function announce(event:BattleEvent){
  clearTimeout(bannerTimer);const b=el('battle-banner');b.className='battle-banner '+(event.actor===1?'enemy-hit':'');
+ const duration=event.kind==='capture'?(event.actor===1?2800:1700):1500;b.style.setProperty('--announcement-duration',duration+'ms');
  b.innerHTML=event.kind==='capture'?(event.sweep?'SUIPI':'CAPTURED')+'<small>'+event.captured+' original shapes · '+signed(event.shift)+' point-lead shift</small>':(event.kind==='build'?'FUSION':'DEPLOYED')+'<small>'+label(event.target??event.value)+' '+(event.target??event.value)+'</small>';
- void b.offsetWidth;b.classList.add('show');bannerTimer=setTimeout(()=>{b.classList.remove('show');b.replaceChildren();},1250);
+ void b.offsetWidth;b.classList.add('show');bannerTimer=setTimeout(()=>{b.classList.remove('show');b.replaceChildren();},duration);
 }
 async function play(move:Move){
  if(busy||state.finished||state.roundOver)return;
- try{const response=rules.call<{battle:BattleState;events:BattleEvent[]}>({type:'battle_play',...move});save();busy=true;hand=null;floor=[];render();
- for(const event of response.events){el('turn-label').textContent=event.actor===0?'Astra resolving…':'Sentinel responding…';announce(event);await arena?.animate(event);state=event.state;el('combat-log').textContent=state.last;render();}
+ try{const response=rules.call<{battle:BattleState;events:BattleEvent[]}>({type:'battle_play',...move});save();busy=true;presentingActor=0;thinking=false;hand=null;floor=[];render();
+ for(const event of response.events){
+  presentingActor=event.actor;thinking=event.actor===1;renderTurn();
+  if(event.actor===1){
+   await pause(750);thinking=false;renderTurn();arena?.previewMove(event);
+   el('combat-log').textContent='Sentinel plays energy '+event.value+' · '+(event.kind==='capture'?'capturing '+event.captured+' shapes':event.kind==='build'?'forging energy '+event.target:'deploying to the field');
+   await pause(550);
+  }
+  announce(event);await arena?.animate(event);state=event.state;el('combat-log').textContent=state.last;render();
+  if(event.actor===1)await pause(450);
+ }
  state=response.battle;busy=false;render();
  }catch(e){busy=false;el('combat-log').textContent=e instanceof Error?e.message:'Move failed.';if(loaded){state=rules.call<{battle:BattleState}>({type:'battle_state'}).battle;render();}}
 }

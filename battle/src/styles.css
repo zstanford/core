@@ -18,3 +18,6 @@ dialog{color:#e4edf7;background:#0d1829;border:1px solid #839ab442;padding:30px;
 @media(max-width:700px){.hand{gap:0;min-height:114px}.hand-choice{height:29px;min-width:44px}.hand-choice .name{font-size:8px}.hand-choice .energy{font-size:9px}.drag-status{font-size:11px;top:41%}}
 @media(max-width:380px){.hand{grid-auto-rows:84px;min-height:168px;gap:0 4px}.hand-choice{display:flex;align-self:end;height:27px;min-height:27px;flex-direction:row}.hand-choice .energy{align-self:auto}.hand-choice .name{font-size:8px}}
 @media(max-height:610px) and (min-width:701px){.hand{height:90px;min-height:90px}.hand-choice{height:27px;min-height:27px}.hand-choice .name{font-size:8px}}
+
+/* Turn ownership stays visible throughout anticipation and resolution. */
+.pilot{--turn-color:var(--cyan)}.pilot.enemy{--turn-color:var(--pink)}.pilot.is-active strong{color:var(--turn-color);text-shadow:0 0 18px color-mix(in srgb,var(--turn-color) 45%,transparent)}.pilot.is-active span{text-shadow:0 0 12px color-mix(in srgb,var(--turn-color) 50%,transparent)}.battle[data-active-player=sentinel] .turn-status>span{color:var(--pink)}.battle-banner.show{animation-duration:var(--announcement-duration,1.25s)}

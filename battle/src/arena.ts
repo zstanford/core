@@ -40,6 +40,8 @@ export class Arena {
   private camera:ArcRotateCamera;
   private units:Unit[]=[];
   private cores:Mesh[]=[];
+  private turnRings:Mesh[]=[];
+  private activeTurn:0|1|null=0;
   private glow:GlowLayer;
   private clock=0;
   private lineBeacon!:Mesh;
@@ -94,12 +96,33 @@ export class Arena {
       if(this.stopped||this.suspended)return;
       this.syncResolution();
       const dt=Math.min(this.engine.getDeltaTime()/1000,.05);this.clock+=dt;
+      this.updateTurnGlow();
       if(!this.reduced){
         for(const unit of this.units){unit.solid.rotation.y+=dt*.24;unit.solid.rotation.z=Math.sin(this.clock*.45+unit.phase)*.12;unit.solid.position.y=.85+(unit.area==='floor'?Math.sin(this.clock*1.1+unit.phase)*.11:0);}
         this.cores.forEach((m,i)=>{m.rotation.y+=dt*(i?-.1:.1);});
       }
       this.scene.render();
     });
+  }
+
+  setTurn(actor:0|1|null){this.activeTurn=actor;this.updateTurnGlow();}
+  previewMove(event:BattleEvent){
+    this.highlight(null,event.floor);
+    for(const unit of this.units)if(unit.area==='floor'&&event.floor.includes(unit.index)){
+      (unit.ring.material as StandardMaterial).emissiveColor=(event.actor===1?pink:cyan).scale(1.1);
+      unit.ring.scaling.setAll(1.15);
+    }
+  }
+  private updateTurnGlow(){
+    const pulse=this.reduced?1:1+Math.sin(this.clock*2)*.12;
+    for(const [i,core] of this.cores.entries()){
+      const active=this.activeTurn===i,color=i?pink:cyan;
+      (core.material as StandardMaterial).emissiveColor=color.scale(active?1.6*pulse:.17);
+      core.scaling.setAll(active?1.16:1);
+      const ring=this.turnRings[i];if(!ring)continue;
+      ring.visibility=active?1:.1;
+      (ring.material as StandardMaterial).emissiveColor=color.scale(active?1.5*pulse:.15);
+    }
   }
 
   private updateLabels(){
@@ -229,6 +252,8 @@ export class Arena {
       const core=MeshBuilder.CreatePolyhedron('core-'+i,{type:3,size:.22},this.scene);core.position=new Vector3(x,.7,0);core.material=this.material('coremat-'+i,color);core.enableEdgesRendering();core.edgesWidth=2;core.edgesColor=new Color4(color.r,color.g,color.b,1);core.isPickable=false;this.cores.push(core);
       this.circle('core-ring',.45,-.12,0,color,.5).position.x=x;
       this.circle('core-ring2',.62,-.12,0,color,.18).position.x=x;
+      const ring=MeshBuilder.CreateTorus('turn-ring-'+i,{diameter:1.5,thickness:.045,tessellation:64},this.scene);
+      ring.position=new Vector3(x,-.1,0);ring.material=this.material('turn-ring-material-'+i,color);ring.isPickable=false;this.turnRings.push(ring);
     });
     this.lines('tug-rail',[new Vector3(-5,.05,-2.2),new Vector3(5,.05,-2.2)],neutral,.45);
     this.lineBeacon=MeshBuilder.CreateSphere('point-lead',{diameter:.18,segments:12},this.scene);this.lineBeacon.position=new Vector3(0,.15,-2.2);this.lineBeacon.material=this.material('lead-material',cyan);this.lineBeacon.isPickable=false;
@@ -328,10 +353,10 @@ export class Arena {
     if(event.kind==='capture'){
       for(const unit of selected){(unit.solid.material as StandardMaterial).emissiveColor=unit.color.scale(.65);}
       const center=new Vector3(0,1,1);this.tone(310,.4);
-      await this.tween(300,t=>selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(u.layoutScale*(1-.65*t));u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;}));
+      await this.tween(event.actor===1?850:450,t=>selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(u.layoutScale*(1-.65*t));u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;}));
       const projectile=this.solid('captured-energy',event.value,this.sizeFor(event.value));projectile.position=center.clone();projectile.material=this.material('capture-material',this.colorFor([event.card]));projectile.isPickable=false;
       const target=this.cores[event.actor].position.clone(),path=MeshBuilder.CreateLines('collection-trail',{points:[center,target]},this.scene);path.color=color;path.alpha=.35;path.isPickable=false;
-      await this.tween(350,t=>{projectile.position=Vector3.Lerp(center,target,t*t);projectile.rotation.y=t*6;});
+      await this.tween(event.actor===1?950:600,t=>{projectile.position=Vector3.Lerp(center,target,t*t);projectile.rotation.y=t*6;});
       projectile.dispose(false,true);path.dispose();this.burst(target,color);this.tone(event.sweep?95:180,.4);
       if(event.sweep){const wave=MeshBuilder.CreateTorus('suipi-wave',{diameter:1,thickness:.04,tessellation:96},this.scene);wave.position.y=.15;wave.material=this.material('wave-material',color);wave.isPickable=false;await this.tween(450,t=>{wave.scaling.setAll(.3+t*15);wave.visibility=1-t;});wave.dispose(false,true);}
     }else if(event.kind==='build'){
