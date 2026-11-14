@@ -24,7 +24,7 @@ const MeshBuilder={CreateBox,CreateCylinder,CreateLines,CreateLineSystem,CreateP
 import {suits,pointMarks,type ShapeCard,type BattleState,type BattleEvent,type Move,type Choice} from './types';
 import type {DropTarget} from './move-draft';
 import {VertexBuffer} from '@babylonjs/core/Buffers/buffer';
-import {handAnchor} from './hand-anchor';
+import {handAnchor,handPresentation} from './hand-anchor';
 
 type Unit={node:TransformNode;solid:Mesh;cards:ShapeCard[];pick:Mesh;radius:number;ring:Mesh;label:Mesh;pips:Mesh|null;labelSize:number;minPixels:number;layoutScale:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number;owner:0|1|null;color:Color3};
 export interface DragInteraction {
@@ -247,11 +247,12 @@ export class Arena {
       const {center,worldPerPixel}=handAnchor(this.camera.getViewMatrix(),this.camera.getProjectionMatrix(),r.width,r.height,rect.left+rect.width/2-r.left,rect.top-r.top-35);
       const world=center.subtract(new Vector3(0,.85,0));
       const radius=Math.min(rect.width*.37,11+u.value*1.2);
-      u.layoutScale=worldPerPixel*radius/u.radius;
+      const presentation=handPresentation(this.camera.getViewMatrix(),u.solid.rotation,u.solid.getVerticesData(VertexBuffer.PositionKind)!);
+      u.layoutScale=worldPerPixel*radius/Math.max(.001,presentation.radius);
       u.pick.scaling.setAll(worldPerPixel*Math.min(44,rect.width*.9)/(this.sizeFor(u.value,.72)*2.5*u.layoutScale));
       const scale=u.layoutScale*(b.getAttribute('aria-pressed')==='true'?1.12:1);
       world.y=center.y-.85*scale;u.base.copyFrom(world);
-      if(this.dragging?.unit!==u&&u.index!==this.stagedHand){u.node.position.copyFrom(world);u.node.scaling.setAll(scale);}
+      if(this.dragging?.unit!==u&&u.index!==this.stagedHand){u.node.position.copyFrom(world);u.node.scaling.setAll(scale);u.solid.rotationQuaternion=presentation.rotation;}
     }
   }
 
