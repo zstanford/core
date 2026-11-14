@@ -85,3 +85,5 @@ Round advancement is explicit; captures, field formations, and point lead carry 
 ### Drag-first move confirmation
 
 Drop a hand shape onto formations to preview legal capture/fusion results, or empty table space to preview deployment. Confirm commits one move and begins Sentinel’s reply. Undo cancels only the uncommitted preview, preserving the hand, field, score, and saved match. Ambiguous drops offer their legal outcomes in a contextual result picker. Off-table and illegal drops return to the hand. No persistent action-mode toolbar is shown.
+
+If a proposed build matches a value already on the field, include that equal formation in the stack automatically. A field 5 plus hand 6 stacks with an existing field 11 as a locked 11, while retaining a hand 11 as the finisher. Confirm still precedes any rules-state change.

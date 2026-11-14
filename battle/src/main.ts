@@ -38,16 +38,16 @@ function select(area:'hand'|'floor',index:number){
 }
 function cardDescription(c:ShapeCard){return shapeLabel(c)+' · '+c.value+' energy'+(c.points?' · '+c.points+' special '+(c.points===1?'point':'points'):'');}
 function choicesFor(index:number,target:DropTarget){
- return dropChoices(index,floor,target,request=>rules.call<{choices:Choice[]}>({type:'battle_choices',...request}).choices);
+ return dropChoices(index,floor,target,request=>rules.call<{choices:Choice[]}>({type:'battle_choices',...request}).choices,state);
 }
 function optionTitle(option:DraftOption){
- return option.move.kind==='capture'?(option.choice.sweep?'Suipi · ':'Capture ')+option.choice.captured+' shapes':option.move.kind==='build'?'Forge '+label(option.choice.target??0)+' '+option.choice.target:'Deploy '+label(state.hand.find(c=>c.index===option.move.hand)!.value);
+ return option.move.kind==='capture'?(option.choice.sweep?'Suipi · ':'Capture ')+option.choice.captured+' shapes':option.move.kind==='build'?(option.autoIncluded?.length?'Stack ':'Forge ')+label(option.choice.target??0)+' '+option.choice.target:'Deploy '+label(state.hand.find(c=>c.index===option.move.hand)!.value);
 }
 function previewDrop(index:number,target:DropTarget){
  if(target.kind==='outside')return {valid:false,text:'Drop onto the table or a formation'};
  const options=choicesFor(index,target);
  if(!options.length)return {valid:false,text:target.kind==='field'?'Cannot deploy · matching field energy or an unfinished build':'No legal capture or fusion · keep a matching finisher to forge'};
- return {valid:true,text:optionTitle(options[0])+' · release to preview'};
+ return {valid:true,text:optionTitle(options[0])+' · release to preview',targets:options[0].move.floor};
 }
 function stage(index:number,target:DropTarget){
  if(!loaded||busy||state.roundOver||state.finished){arena?.clearDropOrigin();return;}
@@ -129,6 +129,11 @@ function renderSelection(){
  if(draft){
   const option=draft.options[draft.selected];el('move-title').textContent=optionTitle(option);
   el('move-detail').textContent=option.move.kind==='capture'?'Point-lead shift '+signed(option.choice.shift)+(option.choice.sweep?' · Suipi sweep':''):option.move.kind==='build'?'Original colors and points stay inside. Matching finisher retained.':'This shape will enter shared space. Either player can use it.';
+  if(option.autoIncluded?.length){
+   const additions=option.move.floor.filter(i=>!option.autoIncluded!.includes(i)).map(i=>state.floor.find(p=>p.index===i)!.value);
+   additions.push(state.hand.find(c=>c.index===option.move.hand)!.value);
+   el('move-detail').textContent=additions.join(' + ')+' = '+option.choice.target+'. Stacks with the field’s '+option.choice.target+'; keep your '+option.choice.target+' as finisher.';
+  }
   const picker=el<HTMLSelectElement>('draft-choice');picker.replaceChildren();picker.hidden=draft.options.length<2;
   for(const [i,candidate] of draft.options.entries()){const item=document.createElement('option');item.value=String(i);item.textContent=optionTitle(candidate);picker.append(item);}picker.value=String(draft.selected);
   arena?.showDraft(option.move,option.choice,draft.target);return;

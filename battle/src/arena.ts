@@ -30,7 +30,7 @@ type Unit={node:TransformNode;solid:Mesh;cards:ShapeCard[];pick:Mesh;radius:numb
 export interface DragInteraction {
   canMove:()=>boolean;
   begin:(hand:number)=>void;
-  preview:(hand:number,target:DropTarget)=>{valid:boolean;text:string};
+  preview:(hand:number,target:DropTarget)=>{valid:boolean;text:string;targets?:number[]};
   drop:(hand:number,target:DropTarget)=>void;
   status:(text:string,valid:boolean)=>void;
 }
@@ -58,6 +58,7 @@ export class Arena {
   private hoverTarget:number|null|undefined;
   private hoverValid=false;
   private hoverKey='';
+  private hoverFloor:number[]=[];
   private selectedFloor:number[]=[];
   private dropOrigin?:{index:number;position:Vector3;center:Vector3};
   private draftNode?:TransformNode;
@@ -196,7 +197,7 @@ export class Arena {
     const target=this.dropTarget(e),key=target.kind==='formation'?'formation:'+target.index:target.kind;
     if(key!==this.hoverKey){
       this.hoverKey=key;this.hoverTarget=target.kind==='formation'?target.index:null;d.target=this.hoverTarget;
-      const feedback=this.interaction.preview(d.unit.index,target);this.hoverValid=feedback.valid;this.interaction.status(feedback.text,feedback.valid);
+      const feedback=this.interaction.preview(d.unit.index,target);this.hoverValid=feedback.valid;this.hoverFloor=feedback.targets??[];this.interaction.status(feedback.text,feedback.valid);
     }
     d.unit.node.scaling.setAll(d.unit.layoutScale*1.15);
     this.paintHover();
@@ -218,7 +219,7 @@ export class Arena {
   };
   private cancelDrag=()=>{
     const d=this.dragging;if(!d)return;
-    this.dragging=undefined;this.hoverTarget=undefined;this.hoverKey='';this.canvas.classList.remove('dragging');
+    this.dragging=undefined;this.hoverTarget=undefined;this.hoverKey='';this.hoverFloor=[];this.canvas.classList.remove('dragging');
     d.unit.node.position.copyFrom(d.unit.base);d.unit.node.scaling.setAll(d.unit.layoutScale);
     for(const u of this.units){u.ring.scaling.setAll(1);(u.ring.material as StandardMaterial).emissiveColor=(u.owner===1?pink:u.owner===0?cyan:neutral).scale(.42);}
     this.paintHover();
@@ -227,7 +228,7 @@ export class Arena {
   };
   private paintHover(){
     for(const u of this.units)if(u.area==='floor'){
-      const hovering=u.index===this.hoverTarget;
+      const hovering=u.index===this.hoverTarget||this.hoverFloor.includes(u.index);
       u.ring.scaling.setAll(hovering?1.3:1);
       u.ring.visibility=hovering||this.selectedFloor.includes(u.index)?1:u.owner===null?.15:.65;
       (u.ring.material as StandardMaterial).emissiveColor=(hovering?(this.hoverValid?cyan:Color3.FromHexString('#f29883')):u.owner===1?pink:u.owner===0?cyan:neutral).scale(hovering?.9:.42);

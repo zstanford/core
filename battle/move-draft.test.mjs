@@ -60,3 +60,23 @@ test('an ambiguous drop preserves both legal outcomes for the confirmation picke
  assert.deepEqual(options.map(o=>o.move.kind),['capture','build']);
  assert.deepEqual(options.map(o=>o.move.floor),[[1],[1]]);
 });
+
+test('6 on 5 automatically stacks with the field 11 while retaining the hand 11',()=>{
+ const seed=Array(32).fill(0);seed[0]=91;
+ const state=call({type:'battle_new',seed}).battle,before=call({type:'battle_save'});
+ const six=state.hand.find(c=>c.value===6).index;
+ const five=state.floor.find(p=>p.value===5).index,eleven=state.floor.find(p=>p.value===11).index;
+ assert.equal(query({hand:six,floor:[five],kind:'build'}).length,0,'a separate 11 would duplicate a field value');
+ const options=dropChoices(six,[],{kind:'formation',index:five},query,state);
+ const option=options.find(o=>o.move.kind==='build'&&o.choice.target===11);
+ assert.ok(option,'the full 5 + 6, stacked with 11, must be offered');
+ assert.deepEqual(option.autoIncluded,[eleven]);assert.deepEqual(option.move.floor,[five,eleven]);
+ assert.deepEqual(call({type:'battle_save'}),before,'preview must not play the move');
+ const selected=dropChoices(six,[eleven],{kind:'formation',index:five},query,state).find(o=>o.move.kind==='build'&&o.choice.target===11);
+ assert.ok(selected);assert.equal(new Set(selected.move.floor).size,selected.move.floor.length,'manual selection must not include the 11 twice');
+ const result=call({type:'battle_play',...option.move});assert.ok(!result.error,result.error);
+ const own=result.events[0].state,stack=own.floor.find(p=>p.value===11);
+ assert.ok(stack.locked);assert.equal(stack.owner,0);assert.deepEqual(stack.parts.map(c=>c.value).sort((a,b)=>a-b),[5,6,11]);
+ assert.ok(own.hand.some(c=>c.value===11),'hand 11 remains as finisher');assert.ok(!own.hand.some(c=>c.index===six));
+ assert.equal(own.floor.filter(p=>p.value===11).length,1);assert.ok(!own.floor.some(p=>p.value===5));
+});
