@@ -23,6 +23,7 @@ import '@babylonjs/core/Culling/ray';
 const MeshBuilder={CreateBox,CreateCylinder,CreateLines,CreateLineSystem,CreatePolyhedron,CreateTorus,CreateSphere};
 import {suits,pointMarks,type ShapeCard,type BattleState,type BattleEvent} from './types';
 import {VertexBuffer} from '@babylonjs/core/Buffers/buffer';
+import {handAnchor} from './hand-anchor';
 
 type Unit={node:TransformNode;solid:Mesh;pick:Mesh;radius:number;ring:Mesh;label:Mesh;pips:Mesh|null;labelSize:number;minPixels:number;layoutScale:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number;owner:0|1|null;color:Color3};
 export interface DragInteraction {
@@ -87,15 +88,21 @@ export class Arena {
     window.addEventListener('blur',this.cancelDrag);
     this.observer=new ResizeObserver(()=>{this.cancelDrag();this.engine.resize();this.resetCamera();});this.observer.observe(canvas);
     this.visibility();document.addEventListener('visibilitychange',this.visibility);
+    // Camera inertia is applied inside scene.render(), before this observable.
+    this.scene.onBeforeCameraRenderObservable.add(()=>{this.layoutHand();this.updateLabels();});
     this.engine.runRenderLoop(()=>{
       if(this.stopped||this.suspended)return;
       this.syncResolution();
-      this.layoutHand();
       const dt=Math.min(this.engine.getDeltaTime()/1000,.05);this.clock+=dt;
       if(!this.reduced){
-        for(const unit of this.units){unit.solid.rotation.y+=dt*.24;unit.solid.rotation.z=Math.sin(this.clock*.45+unit.phase)*.12;unit.solid.position.y=.85+Math.sin(this.clock*1.1+unit.phase)*.11;}
+        for(const unit of this.units){unit.solid.rotation.y+=dt*.24;unit.solid.rotation.z=Math.sin(this.clock*.45+unit.phase)*.12;unit.solid.position.y=.85+(unit.area==='floor'?Math.sin(this.clock*1.1+unit.phase)*.11:0);}
         this.cores.forEach((m,i)=>{m.rotation.y+=dt*(i?-.1:.1);});
       }
+      this.scene.render();
+    });
+  }
+
+  private updateLabels(){
       // Billboard labels stay upright while solids rotate. Keep small tiers readable on phones.
       for(const unit of this.units){
         unit.label.position.y=unit.solid.position.y;
@@ -104,8 +111,6 @@ export class Arena {
         unit.label.scaling.setAll(Math.max(unit.labelSize,worldPerPixel*unit.minPixels)/Math.max(.01,unit.node.scaling.x));
         if(unit.pips){unit.pips.position.y=unit.solid.position.y-worldPerPixel*12;unit.pips.scaling.set(Math.max(unit.labelSize*2,worldPerPixel*35)/Math.max(.01,unit.node.scaling.x),worldPerPixel*9/Math.max(.01,unit.node.scaling.x),1);}
       }
-      this.scene.render();
-    });
   }
 
   private pointerPosition(e:PointerEvent){const r=this.canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
@@ -121,7 +126,7 @@ export class Arena {
     if(index===undefined)return;
     const unit=this.units.find(u=>u.area==='hand'&&u.index===index);if(!unit)return;
     e.preventDefault();e.stopImmediatePropagation();
-    this.camera.detachControl();this.camera.inertialAlphaOffset=0;this.camera.inertialBetaOffset=0;
+    this.camera.detachControl();this.camera.inertialAlphaOffset=0;this.camera.inertialBetaOffset=0;this.camera.inertialRadiusOffset=0;
     this.dragging={unit,pointer:e.pointerId,x:e.clientX,y:e.clientY,moved:false,target:null};
     this.canvas.setPointerCapture(e.pointerId);
   };
@@ -180,14 +185,14 @@ export class Arena {
     const r=this.canvas.getBoundingClientRect();
     for(const u of this.units)if(u.area==='hand'){
       const b=document.querySelector<HTMLButtonElement>('#hand button[data-index="'+u.index+'"]');if(!b)continue;
-      const rect=b.getBoundingClientRect(),world=this.worldAt(rect.left+rect.width/2-r.left,rect.top-r.top-35);if(!world)continue;
-      const distance=Vector3.Distance(this.camera.globalPosition,world.add(new Vector3(0,.85,0)));
-      const worldPerPixel=2*distance*Math.tan(this.camera.fov/2)/Math.max(1,this.canvas.clientHeight);
+      const rect=b.getBoundingClientRect();
+      const {center,worldPerPixel}=handAnchor(this.camera.getViewMatrix(),this.camera.getProjectionMatrix(),r.width,r.height,rect.left+rect.width/2-r.left,rect.top-r.top-35);
+      const world=center.subtract(new Vector3(0,.85,0));
       const radius=Math.min(rect.width*.37,11+u.value*1.2);
       u.layoutScale=worldPerPixel*radius/u.radius;
       u.pick.scaling.setAll(worldPerPixel*Math.min(44,rect.width*.9)/(this.sizeFor(u.value,.72)*2.5*u.layoutScale));
       const scale=u.layoutScale*(b.getAttribute('aria-pressed')==='true'?1.12:1);
-      world.y=.85*(1-scale);u.base.copyFrom(world);
+      world.y=center.y-.85*scale;u.base.copyFrom(world);
       if(this.dragging?.unit!==u){u.node.position.copyFrom(world);u.node.scaling.setAll(scale);}
     }
   }
@@ -279,9 +284,11 @@ export class Arena {
     const color=this.colorFor(cards),node=new TransformNode(area+index,this.scene);node.position=base.clone();const size=this.sizeFor(value,scale);
     const solid=this.solid('shape-'+area+index,value,size);solid.parent=node;solid.position.y=.85;solid.rotation.x=.14;solid.rotation.y=value*.4;
     const extent=solid.getBoundingInfo().boundingBox.extendSize,radius=Math.max(extent.x,extent.y,extent.z);
+    if(area==='hand')solid.renderingGroupId=1;
     solid.material=this.material('shape-material',color);solid.enableEdgesRendering();solid.edgesWidth=1.8;solid.edgesColor=new Color4(color.r,color.g,color.b,1);solid.metadata={area,index};
     const ring=MeshBuilder.CreateTorus('selection',{diameter:area==='hand'?radius*2.3:1.65*scale,thickness:owner===null?.018:.035,tessellation:48},this.scene);ring.parent=node;ring.position.y=area==='hand'?.85-radius*.6:.01;ring.material=this.material('ownership-material',owner===1?pink:owner===0?cyan:neutral);ring.isPickable=false;
     const pick=MeshBuilder.CreateSphere('pick-target',{diameter:area==='hand'?size*2.5:1.65*scale,segments:8},this.scene);pick.parent=node;pick.position.y=.85;pick.visibility=0;pick.metadata={area,index};
+    if(area==='hand'){ring.renderingGroupId=1;pick.renderingGroupId=1;}
     const label=this.textPlane('energy-'+area+index,String(value),128,128,value>=10?82:112);label.parent=node;label.position.y=.85;(label.material as StandardMaterial).alpha=.24;
     const marks=pointMarks(cards),pips=marks?this.textPlane('point-marks-'+area+index,marks,256,64,40,cards.some(c=>c.suit===3&&c.value===2)&&!cards.some(c=>c.suit===1&&c.value>=10)?'#f2c55e':'#d6e5ff'):null;
     if(pips){pips.parent=node;(pips.material as StandardMaterial).alpha=.85;}
