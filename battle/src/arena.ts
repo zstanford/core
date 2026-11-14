@@ -24,7 +24,7 @@ const MeshBuilder={CreateBox,CreateCylinder,CreateLines,CreateLineSystem,CreateP
 import {suits,pointMarks,type ShapeCard,type BattleState,type BattleEvent} from './types';
 import {VertexBuffer} from '@babylonjs/core/Buffers/buffer';
 
-type Unit={node:TransformNode;solid:Mesh;ring:Mesh;label:Mesh;pips:Mesh|null;labelSize:number;minPixels:number;layoutScale:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number;owner:0|1|null;color:Color3};
+type Unit={node:TransformNode;solid:Mesh;pick:Mesh;radius:number;ring:Mesh;label:Mesh;pips:Mesh|null;labelSize:number;minPixels:number;layoutScale:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number;owner:0|1|null;color:Color3};
 export interface DragInteraction {
   canMove:()=>boolean;
   begin:(hand:number)=>void;
@@ -130,7 +130,7 @@ export class Arena {
     e.preventDefault();e.stopImmediatePropagation();
     if(!d.moved){if(Math.hypot(e.clientX-d.x,e.clientY-d.y)<7)return;d.moved=true;this.interaction.begin(d.unit.index);this.canvas.classList.add('dragging');}
     const p=this.pointerPosition(e),world=this.worldAt(p.x,p.y);
-    if(world)d.unit.node.position.copyFrom(world);
+    if(world){world.y=.85*(1-d.unit.layoutScale*1.15);d.unit.node.position.copyFrom(world);}
     const target=this.pick(e,'floor')??null;
     if(target!==this.hoverTarget){
       d.target=target;this.hoverTarget=target;
@@ -181,12 +181,14 @@ export class Arena {
     for(const u of this.units)if(u.area==='hand'){
       const b=document.querySelector<HTMLButtonElement>('#hand button[data-index="'+u.index+'"]');if(!b)continue;
       const rect=b.getBoundingClientRect(),world=this.worldAt(rect.left+rect.width/2-r.left,rect.top-r.top-35);if(!world)continue;
-      u.base.copyFrom(world);
       const distance=Vector3.Distance(this.camera.globalPosition,world.add(new Vector3(0,.85,0)));
       const worldPerPixel=2*distance*Math.tan(this.camera.fov/2)/Math.max(1,this.canvas.clientHeight);
       const radius=Math.min(rect.width*.37,11+u.value*1.2);
-      u.layoutScale=worldPerPixel*radius/this.sizeFor(u.value,.72);
-      if(this.dragging?.unit!==u){u.node.position.copyFrom(world);u.node.scaling.setAll(u.layoutScale*(b.getAttribute('aria-pressed')==='true'?1.12:1));}
+      u.layoutScale=worldPerPixel*radius/u.radius;
+      u.pick.scaling.setAll(worldPerPixel*Math.min(44,rect.width*.9)/(this.sizeFor(u.value,.72)*2.5*u.layoutScale));
+      const scale=u.layoutScale*(b.getAttribute('aria-pressed')==='true'?1.12:1);
+      world.y=.85*(1-scale);u.base.copyFrom(world);
+      if(this.dragging?.unit!==u){u.node.position.copyFrom(world);u.node.scaling.setAll(scale);}
     }
   }
 
@@ -276,13 +278,14 @@ export class Arena {
   private unit(area:'hand'|'floor',index:number,value:number,base:Vector3,cards:ShapeCard[],scale=1,owner:0|1|null=null) {
     const color=this.colorFor(cards),node=new TransformNode(area+index,this.scene);node.position=base.clone();const size=this.sizeFor(value,scale);
     const solid=this.solid('shape-'+area+index,value,size);solid.parent=node;solid.position.y=.85;solid.rotation.x=.14;solid.rotation.y=value*.4;
+    const extent=solid.getBoundingInfo().boundingBox.extendSize,radius=Math.max(extent.x,extent.y,extent.z);
     solid.material=this.material('shape-material',color);solid.enableEdgesRendering();solid.edgesWidth=1.8;solid.edgesColor=new Color4(color.r,color.g,color.b,1);solid.metadata={area,index};
-    const ring=MeshBuilder.CreateTorus('selection',{diameter:area==='hand'?size*2.5:1.65*scale,thickness:owner===null?.018:.035,tessellation:48},this.scene);ring.parent=node;ring.position.y=.01;ring.material=this.material('ownership-material',owner===1?pink:owner===0?cyan:neutral);ring.isPickable=false;
+    const ring=MeshBuilder.CreateTorus('selection',{diameter:area==='hand'?radius*2.3:1.65*scale,thickness:owner===null?.018:.035,tessellation:48},this.scene);ring.parent=node;ring.position.y=area==='hand'?.85-radius*.6:.01;ring.material=this.material('ownership-material',owner===1?pink:owner===0?cyan:neutral);ring.isPickable=false;
     const pick=MeshBuilder.CreateSphere('pick-target',{diameter:area==='hand'?size*2.5:1.65*scale,segments:8},this.scene);pick.parent=node;pick.position.y=.85;pick.visibility=0;pick.metadata={area,index};
     const label=this.textPlane('energy-'+area+index,String(value),128,128,value>=10?82:112);label.parent=node;label.position.y=.85;(label.material as StandardMaterial).alpha=.24;
     const marks=pointMarks(cards),pips=marks?this.textPlane('point-marks-'+area+index,marks,256,64,40,cards.some(c=>c.suit===3&&c.value===2)&&!cards.some(c=>c.suit===1&&c.value>=10)?'#f2c55e':'#d6e5ff'):null;
     if(pips){pips.parent=node;(pips.material as StandardMaterial).alpha=.85;}
-    const unit={node,solid,ring,label,pips,labelSize:size*.9*.75,minPixels:value>=10?24:18,layoutScale:1,base,index,area,value,phase:index*1.4,owner,color};this.units.push(unit);return unit;
+    const unit={node,solid,pick,radius,ring,label,pips,labelSize:size*.9*.75,minPixels:value>=10?24:18,layoutScale:1,base,index,area,value,phase:index*1.4,owner,color};this.units.push(unit);return unit;
   }
   highlight(hand:number|null,floor:number[]) {
     this.selectedFloor=[...floor];
