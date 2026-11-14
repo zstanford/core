@@ -121,3 +121,31 @@ test('empty-field drop still deploys when no capture exists',()=>{
  const options=dropChoices(card.index,[],{kind:'field',x:0,z:0},query,state);
  assert.ok(options.length);assert.ok(options.every(o=>o.move.kind==='discard'));
 });
+
+test('a direct equal-value drop captures even if an unrelated formation was selected',()=>{
+ const seed=Array(32).fill(0);seed[0]=91;
+ const state=call({type:'battle_new',seed}).battle,before=call({type:'battle_save'});
+ const card=state.hand.find(c=>c.value===11),target=state.floor.find(p=>p.value===11),unrelated=state.floor.find(p=>p.value===5);
+ assert.equal(query({hand:card.index,floor:[unrelated.index,target.index],kind:'capture'}).length,0);
+ const options=dropChoices(card.index,[unrelated.index],{kind:'formation',index:target.index},query,state);
+ assert.equal(options[0]?.move.kind,'capture');assert.deepEqual(options[0].move.floor,[target.index]);
+ assert.deepEqual(call({type:'battle_save'}),before);
+ const result=call({type:'battle_play',...options[0].move});assert.ok(!result.error,result.error);
+ assert.equal(result.events[0].kind,'capture');assert.equal(result.events[0].captured,2);
+ assert.ok(result.events[0].state.floor.some(p=>p.value===5),'unrelated selection stays on the field');
+});
+
+test('equal-value drops keep a valid selected multi-group capture',()=>{
+ let found=false;
+ for(let seed=0;seed<80&&!found;seed++){
+  const state=call({type:'battle_new',seed:Array(32).fill(seed)}).battle;
+  for(const card of state.hand){
+   const target=state.floor.find(p=>p.value===card.value);if(!target)continue;
+   const selected=state.floor.filter(p=>p.index!==target.index).map(p=>p.index),floor=[...selected,target.index];
+   if(!query({hand:card.index,floor,kind:'capture'}).length)continue;
+   const options=dropChoices(card.index,selected,{kind:'formation',index:target.index},query,state);
+   assert.equal(options[0].move.kind,'capture');assert.deepEqual(options[0].move.floor,floor);found=true;break;
+  }
+ }
+ assert.ok(found);
+});

@@ -42,6 +42,13 @@ export function dropChoices(hand:number,selected:number[],target:DropTarget,quer
   const request={hand,floor,kind};
   return query(request).map(choice=>({move:{...request,annotation:choice.annotation},choice}));
  });
+ if(target.kind==='formation'&&context&&floor.length>1&&!options.some(o=>o.move.kind==='capture')&&
+    context.hand.find(c=>c.index===hand)?.value===context.floor.find(p=>p.index===target.index)?.value){
+  // A leftover selection must not block the explicit same-value drop target.
+  // Preserve valid multi-group captures; otherwise offer the direct pair first.
+  const request={hand,floor:[target.index],kind:'capture' as const};
+  options.unshift(...query(request).map(choice=>({move:{...request,annotation:choice.annotation},choice})));
+ }
  if(target.kind==='formation'&&context){
   // A newly built value must stack with an existing equal field value.
   // Ask the unchanged rules engine to validate the full grouped move.
