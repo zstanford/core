@@ -76,7 +76,9 @@ function render(){
  el('arsenal-note').textContent=state.hand.length+' in hand · drag onto the field';
  el('formation-count').textContent=String(state.floor.length);
  const rival=el('rival-hand');rival.replaceChildren();for(let i=0;i<state.otherCount;i++){const mark=document.createElement('i');mark.setAttribute('aria-hidden','true');rival.append(mark);}const rivalCount=document.createElement('span');rivalCount.textContent=state.otherCount+' REMAINING';rival.append(rivalCount);
- el('round-button').hidden=!(state.roundOver||state.finished);
+ const continuation=el<HTMLButtonElement>('round-button');continuation.hidden=!(state.roundOver||state.finished);
+ continuation.textContent=state.finished?'Match result':'Deal round '+(state.round+1);
+ continuation.classList.toggle('primary',!state.finished);continuation.classList.toggle('outline',state.finished);
  const limit=23+state.sweeps[0]+state.sweeps[1],position=50+state.lead/limit*43;
  el('lead-label').textContent=state.lead===0?'Even ground':(state.lead>0?'Astra':'Sentinel')+' leads by '+Math.abs(state.lead);
  el('line-marker').style.left=position+'%';
@@ -175,6 +177,7 @@ function showRoundResult(){
 }
 function showScores(){
  closeDialogs();
+ el('score-dialog').querySelector<HTMLButtonElement>('.close-guide')!.textContent=state.finished?'Back to match result →':state.roundOver?'Back to round result →':'Back to the arena →';
  const host=el('score-content');host.replaceChildren();const context=document.createElement('p');context.textContent='Round '+state.round+' of 3 · Round wins '+state.roundWins.join('–');host.append(context);const table=document.createElement('table');table.className='score-table';table.innerHTML='<thead><tr><th>Points</th><th>Astra</th><th>Sentinel</th></tr></thead>';
  const body=document.createElement('tbody');
  for(const [name,key] of [['Energy-1 shapes','ones'],['Crystal 10–13','diamonds'],['Gold 2','goldTwo'],['Most shapes','mostShapes'],['Most gold','mostGold'],['Suipi sweeps','sweeps'],['Total points','points']] as const){
@@ -187,7 +190,12 @@ function showScores(){
 el('help-button').onclick=()=>{closeDialogs();el<HTMLDialogElement>('guide').showModal();};el('score-button').onclick=()=>loaded&&showScores();el('new-button').onclick=()=>{if(loaded){closeDialogs();el<HTMLDialogElement>('new-dialog').showModal();}};
 el('menu-button').onclick=()=>el<HTMLDialogElement>('menu-dialog').showModal();
 el('field-button').onclick=()=>el<HTMLDialogElement>('field-dialog').showModal();
-el('round-button').onclick=()=>showRoundResult();
+el('round-button').onclick=()=>{if(state.finished)showRoundResult();else if(state.roundOver)nextRound();};
+// Escape, backdrop, X, and the footer all emit the same native close event.
+// Programmatic switches to another dialog or the next round must not reopen it.
+el<HTMLDialogElement>('score-dialog').addEventListener('close',()=>{
+ if(loaded&&!busy&&(state.roundOver||state.finished)&&!document.querySelector('dialog[open]'))showRoundResult();
+});
 el('fullscreen-button').hidden=!document.fullscreenEnabled;
 el('fullscreen-button').onclick=async()=>{
  try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();closeDialogs();}
