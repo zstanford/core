@@ -19,7 +19,7 @@ let hudScale=100;
 try{
  const current=localStorage.getItem(hudScaleStorage),legacy=localStorage.getItem('orbit-hud-scale');
  const saved=current!==null?Number(current):legacy!==null?Number(legacy)/1.25:100;
- if(Number.isFinite(saved))hudScale=Math.max(60,Math.min(120,Math.round(saved/5)*5));
+ if(Number.isFinite(saved))hudScale=Math.max(50,Math.min(150,Math.round(saved/5)*5));
  if(current===null&&legacy!==null)localStorage.setItem(hudScaleStorage,String(hudScale));
 }catch{}
 function applyHudScale(){
