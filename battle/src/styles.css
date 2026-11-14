@@ -29,7 +29,7 @@ dialog{color:#e4edf7;background:#0d1829;border:1px solid #839ab442;padding:30px;
 .setting-toggle{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 0;border-bottom:1px solid var(--line);font-size:14px}.setting-toggle small{display:block;color:var(--muted);font-size:11px;margin-top:6px}.setting-toggle input{width:22px;height:22px;accent-color:var(--cyan);flex-shrink:0}#developer-controls{margin-bottom:20px}#rewind-shortcut{color:var(--cyan)}
 
 /* Scale the overlay in its own viewport; the arena keeps its physical canvas size. */
-:root{--hud-scale:1}
+:root{--hud-scale:1.25}
 .hud-layer{position:absolute;inset:0 auto auto 0;width:calc(100% / var(--hud-scale));height:calc(100% / var(--hud-scale));transform:scale(var(--hud-scale));transform-origin:top left;pointer-events:none}
 .hud-layer button,.hud-layer select{pointer-events:auto}
 .setting-scale{padding:18px 0;border-bottom:1px solid var(--line)}

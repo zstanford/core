@@ -14,10 +14,16 @@ let draft:{options:DraftOption[];selected:number;target:DropTarget}|null=null;
 let presentingActor:0|1=0,thinking=false;
 let developerMode=false;
 try{developerMode=localStorage.getItem('orbit-developer-mode')==='true';}catch{}
+const hudScaleStorage='orbit-hud-scale-v2';
 let hudScale=100;
-try{const saved=Number(localStorage.getItem('orbit-hud-scale')??100);if(Number.isFinite(saved))hudScale=Math.max(75,Math.min(150,Math.round(saved/5)*5));}catch{}
+try{
+ const current=localStorage.getItem(hudScaleStorage),legacy=localStorage.getItem('orbit-hud-scale');
+ const saved=current!==null?Number(current):legacy!==null?Number(legacy)/1.25:100;
+ if(Number.isFinite(saved))hudScale=Math.max(60,Math.min(120,Math.round(saved/5)*5));
+ if(current===null&&legacy!==null)localStorage.setItem(hudScaleStorage,String(hudScale));
+}catch{}
 function applyHudScale(){
- document.documentElement.style.setProperty('--hud-scale',String(hudScale/100));
+ document.documentElement.style.setProperty('--hud-scale',String(hudScale/100*1.25));
  el<HTMLInputElement>('hud-scale').value=String(hudScale);
  el('hud-scale-value').textContent=hudScale+'%';
  el('hud-scale').setAttribute('aria-valuetext',hudScale+' percent');
@@ -25,7 +31,7 @@ function applyHudScale(){
 }
 function setHudScale(value:number){
  hudScale=value;applyHudScale();
- try{localStorage.setItem('orbit-hud-scale',String(hudScale));}catch{}
+ try{localStorage.setItem(hudScaleStorage,String(hudScale));}catch{}
 }
 applyHudScale();
 let bannerTimer:ReturnType<typeof setTimeout>;
