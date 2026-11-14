@@ -77,7 +77,7 @@ export class Arena {
     const sources=this.units.filter(u=>u.area==='floor'&&move.floor.includes(u.index));
     const color=move.kind==='build'&&sources.some(u=>!u.color.equals(source.color))?neutral:source.color;
     const node=new TransformNode('pending-move',this.scene);node.position=base;this.draftNode=node;
-    const solid=this.solid('pending-result',value,this.sizeFor(value));solid.parent=node;solid.position.y=1.1;solid.material=this.shapeMaterial('pending-material',color);(solid.material as StandardMaterial).alpha=.18;solid.enableEdgesRendering();solid.edgesColor=new Color4(color.r,color.g,color.b,.8);solid.edgesWidth=2;solid.isPickable=false;solid.renderingGroupId=1;
+    const solid=this.solid('pending-result',value,this.sizeFor(value));solid.parent=node;solid.position.y=1.1;solid.material=this.shapeMaterial('pending-material',color);(solid.material as StandardMaterial).alpha=.6;solid.enableEdgesRendering();solid.edgesColor=new Color4(color.r,color.g,color.b,.8);solid.edgesWidth=2;solid.isPickable=false;solid.renderingGroupId=1;
     const ring=MeshBuilder.CreateTorus('pending-ring',{diameter:1.75,thickness:.035,tessellation:64},this.scene);ring.parent=node;ring.position.y=.06;ring.material=this.material('pending-ring-material',cyan);ring.isPickable=false;ring.renderingGroupId=1;
     const label=this.textPlane('pending-energy',String(value),128,128,value>=10?82:112);label.parent=node;label.position.y=1.1;label.scaling.setAll(.48);
     const marks=pointMarks(move.kind==='build'?[...source.cards,...sources.flatMap(u=>u.cards)]:source.cards);
@@ -266,9 +266,9 @@ export class Arena {
   private material(name:string,color:Color3,glowing=true) {
     const m=new StandardMaterial(name,this.scene);m.diffuseColor=color.scale(.22);m.specularColor=color.scale(.4);m.emissiveColor=color.scale(glowing?.42:.05);m.alpha=.88;return m;
   }
-  private shapeMaterial(name:string,color:Color3){
+  private shapeMaterial(name:string,color:Color3,alpha=.58){
     const material=this.material(name,color);
-    material.alpha=.32;
+    material.alpha=alpha;
     return material;
   }
   private lines(name:string,points:Vector3[],color:Color3,alpha=.3) {
@@ -355,7 +355,7 @@ export class Arena {
     const solid=this.solid('shape-'+area+index,value,size);solid.parent=node;solid.position.y=.85;solid.rotation.x=.14;solid.rotation.y=value*.4;
     const extent=solid.getBoundingInfo().boundingBox.extendSize,radius=Math.max(extent.x,extent.y,extent.z);
     if(area==='hand')solid.renderingGroupId=1;
-    solid.material=this.shapeMaterial('shape-material',color);solid.enableEdgesRendering();solid.edgesWidth=1.8;solid.edgesColor=new Color4(color.r,color.g,color.b,1);solid.metadata={area,index};
+    solid.material=this.shapeMaterial('shape-material',color,area==='hand'?.88:.58);solid.enableEdgesRendering();solid.edgesWidth=1.8;solid.edgesColor=new Color4(color.r,color.g,color.b,1);solid.metadata={area,index};
     const ring=MeshBuilder.CreateTorus('selection',{diameter:area==='hand'?radius*2.3:1.65*scale,thickness:owner===null?.018:.035,tessellation:48},this.scene);ring.parent=node;ring.position.y=area==='hand'?.85-radius*.6:.01;ring.material=this.material('ownership-material',owner===1?pink:owner===0?cyan:neutral);ring.isPickable=false;
     const pick=MeshBuilder.CreateSphere('pick-target',{diameter:area==='hand'?size*2.5:1.65*scale,segments:8},this.scene);pick.parent=node;pick.position.y=.85;pick.visibility=0;pick.metadata={area,index};
     if(area==='hand'){ring.renderingGroupId=1;pick.renderingGroupId=1;}
