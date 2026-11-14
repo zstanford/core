@@ -21,16 +21,17 @@ import {DynamicTexture} from '@babylonjs/core/Materials/Textures/dynamicTexture'
 import '@babylonjs/core/Rendering/edgesRenderer';
 import '@babylonjs/core/Culling/ray';
 const MeshBuilder={CreateBox,CreateCylinder,CreateLines,CreateLineSystem,CreatePolyhedron,CreateTorus,CreateSphere};
-import {suits,pointMarks,type ShapeCard,type BattleState,type BattleEvent} from './types';
+import {suits,pointMarks,type ShapeCard,type BattleState,type BattleEvent,type Move,type Choice} from './types';
+import type {DropTarget} from './move-draft';
 import {VertexBuffer} from '@babylonjs/core/Buffers/buffer';
 import {handAnchor} from './hand-anchor';
 
-type Unit={node:TransformNode;solid:Mesh;pick:Mesh;radius:number;ring:Mesh;label:Mesh;pips:Mesh|null;labelSize:number;minPixels:number;layoutScale:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number;owner:0|1|null;color:Color3};
+type Unit={node:TransformNode;solid:Mesh;cards:ShapeCard[];pick:Mesh;radius:number;ring:Mesh;label:Mesh;pips:Mesh|null;labelSize:number;minPixels:number;layoutScale:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number;owner:0|1|null;color:Color3};
 export interface DragInteraction {
   canMove:()=>boolean;
   begin:(hand:number)=>void;
-  preview:(hand:number,target:number|null)=>{valid:boolean;text:string};
-  drop:(hand:number,target:number|null)=>void;
+  preview:(hand:number,target:DropTarget)=>{valid:boolean;text:string};
+  drop:(hand:number,target:DropTarget)=>void;
   status:(text:string,valid:boolean)=>void;
 }
 const cyan=Color3.FromHexString('#54f2da'), pink=Color3.FromHexString('#ff67b8'),neutral=Color3.FromHexString('#9eacf2');
@@ -56,8 +57,32 @@ export class Arena {
   private suppressClickUntil=0;
   private hoverTarget:number|null|undefined;
   private hoverValid=false;
+  private hoverKey='';
   private selectedFloor:number[]=[];
-  private dropOrigin?:{index:number;position:Vector3};
+  private dropOrigin?:{index:number;position:Vector3;center:Vector3};
+  private draftNode?:TransformNode;
+  private stagedHand:number|null=null;
+  clearDraftPreview(){
+    this.draftNode?.dispose(false,true);this.draftNode=undefined;this.stagedHand=null;
+    for(const u of this.units){u.node.setEnabled(true);u.solid.visibility=1;u.label.visibility=1;if(u.pips)u.pips.visibility=1;}
+  }
+  showDraft(move:Move,choice:Choice,target:DropTarget){
+    this.clearDraftPreview();
+    const source=this.units.find(u=>u.area==='hand'&&u.index===move.hand);if(!source)return;
+    source.node.setEnabled(false);this.stagedHand=move.hand;
+    const base=target.kind==='field'?new Vector3(target.x,0,target.z):this.units.find(u=>u.area==='floor'&&u.index===(target.kind==='formation'?target.index:-1))?.base.clone()??Vector3.Zero();
+    if(move.kind==='capture')base.addInPlace(new Vector3(.65,.25,0));
+    const value=move.kind==='build'?choice.target??source.value:source.value;
+    const sources=this.units.filter(u=>u.area==='floor'&&move.floor.includes(u.index));
+    const color=move.kind==='build'&&sources.some(u=>!u.color.equals(source.color))?neutral:source.color;
+    const node=new TransformNode('pending-move',this.scene);node.position=base;this.draftNode=node;
+    const solid=this.solid('pending-result',value,this.sizeFor(value));solid.parent=node;solid.position.y=1.1;solid.material=this.material('pending-material',color);(solid.material as StandardMaterial).alpha=.6;solid.enableEdgesRendering();solid.edgesColor=new Color4(color.r,color.g,color.b,.8);solid.edgesWidth=2;solid.isPickable=false;solid.renderingGroupId=1;
+    const ring=MeshBuilder.CreateTorus('pending-ring',{diameter:1.75,thickness:.035,tessellation:64},this.scene);ring.parent=node;ring.position.y=.06;ring.material=this.material('pending-ring-material',cyan);ring.isPickable=false;ring.renderingGroupId=1;
+    const label=this.textPlane('pending-energy',String(value),128,128,value>=10?82:112);label.parent=node;label.position.y=1.1;label.scaling.setAll(.48);
+    const marks=pointMarks(move.kind==='build'?[...source.cards,...sources.flatMap(u=>u.cards)]:source.cards);
+    if(marks){const pips=this.textPlane('pending-points',marks,256,64,40);pips.parent=node;pips.position.y=.82;pips.scaling.set(1,.25,1);}
+    for(const u of sources){u.solid.visibility=move.kind==='build'?.1:.45;if(move.kind==='build'){u.label.visibility=0;if(u.pips)u.pips.visibility=0;}}
+  }
   clearDropOrigin(){this.dropOrigin=undefined;}
   private visibility=()=>{this.suspended=document.hidden;if(this.suspended)this.cancelDrag();};
   get isDragging(){return !!this.dragging;}
@@ -137,6 +162,15 @@ export class Arena {
   }
 
   private pointerPosition(e:PointerEvent){const r=this.canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+  private dropTarget(e:PointerEvent):DropTarget{
+    const p=this.pointerPosition(e),r=this.canvas.getBoundingClientRect();
+    if(p.x<0||p.y<0||p.x>r.width||p.y>r.height||document.elementFromPoint(e.clientX,e.clientY)!==this.canvas)return {kind:'outside'};
+    const hand=document.getElementById('hand')!.getBoundingClientRect();
+    if(e.clientX>=hand.left&&e.clientX<=hand.right&&e.clientY>=hand.top&&e.clientY<=hand.bottom)return {kind:'outside'};
+    const index=this.pick(e,'floor');if(index!==undefined)return {kind:'formation',index};
+    const point=this.scene.pick(p.x,p.y,m=>m.name==='platform')?.pickedPoint;
+    return point?{kind:'field',x:point.x,z:point.z}:{kind:'outside'};
+  }
   private pick(e:PointerEvent,area:'hand'|'floor'){
     const p=this.pointerPosition(e);
     return this.scene.pick(p.x,p.y,m=>m.metadata?.area===area)?.pickedMesh?.metadata?.index as number|undefined;
@@ -159,9 +193,9 @@ export class Arena {
     if(!d.moved){if(Math.hypot(e.clientX-d.x,e.clientY-d.y)<7)return;d.moved=true;this.interaction.begin(d.unit.index);this.canvas.classList.add('dragging');}
     const p=this.pointerPosition(e),world=this.worldAt(p.x,p.y);
     if(world){world.y=.85*(1-d.unit.layoutScale*1.15);d.unit.node.position.copyFrom(world);}
-    const target=this.pick(e,'floor')??null;
-    if(target!==this.hoverTarget){
-      d.target=target;this.hoverTarget=target;
+    const target=this.dropTarget(e),key=target.kind==='formation'?'formation:'+target.index:target.kind;
+    if(key!==this.hoverKey){
+      this.hoverKey=key;this.hoverTarget=target.kind==='formation'?target.index:null;d.target=this.hoverTarget;
       const feedback=this.interaction.preview(d.unit.index,target);this.hoverValid=feedback.valid;this.interaction.status(feedback.text,feedback.valid);
     }
     d.unit.node.scaling.setAll(d.unit.layoutScale*1.15);
@@ -170,10 +204,11 @@ export class Arena {
   private pointerUp=(e:PointerEvent)=>{
     const d=this.dragging;if(!d||d.pointer!==e.pointerId)return;
     e.preventDefault();e.stopImmediatePropagation();
-    const target=this.pick(e,'floor')??null;
+    const target=this.dropTarget(e);
     const origin=d.unit.node.position.clone();
+    const center=d.unit.solid.getAbsolutePosition().clone();
     this.cancelDrag();this.suppressClickUntil=performance.now()+400;
-    this.dropOrigin=d.moved&&target!==null?{index:d.unit.index,position:origin}:undefined;
+    this.dropOrigin=d.moved&&target.kind!=='outside'?{index:d.unit.index,position:origin,center}:undefined;
     if(d.moved)this.interaction.drop(d.unit.index,target);else this.select('hand',d.unit.index);
   };
   private pointerCancel=(e:PointerEvent)=>{if(this.dragging?.pointer===e.pointerId)this.cancelDrag();};
@@ -183,7 +218,7 @@ export class Arena {
   };
   private cancelDrag=()=>{
     const d=this.dragging;if(!d)return;
-    this.dragging=undefined;this.hoverTarget=undefined;this.canvas.classList.remove('dragging');
+    this.dragging=undefined;this.hoverTarget=undefined;this.hoverKey='';this.canvas.classList.remove('dragging');
     d.unit.node.position.copyFrom(d.unit.base);d.unit.node.scaling.setAll(d.unit.layoutScale);
     for(const u of this.units){u.ring.scaling.setAll(1);(u.ring.material as StandardMaterial).emissiveColor=(u.owner===1?pink:u.owner===0?cyan:neutral).scale(.42);}
     this.paintHover();
@@ -216,7 +251,7 @@ export class Arena {
       u.pick.scaling.setAll(worldPerPixel*Math.min(44,rect.width*.9)/(this.sizeFor(u.value,.72)*2.5*u.layoutScale));
       const scale=u.layoutScale*(b.getAttribute('aria-pressed')==='true'?1.12:1);
       world.y=center.y-.85*scale;u.base.copyFrom(world);
-      if(this.dragging?.unit!==u){u.node.position.copyFrom(world);u.node.scaling.setAll(scale);}
+      if(this.dragging?.unit!==u&&u.index!==this.stagedHand){u.node.position.copyFrom(world);u.node.scaling.setAll(scale);}
     }
   }
 
@@ -279,6 +314,7 @@ export class Arena {
   }
   private sizeFor(value:number,scale=1){return (.24+(value-1)*.047)*scale;}
   sync(state:BattleState,hand:number|null,floor:number[]) {
+    this.clearDraftPreview();
     this.cancelDrag();
     for(const u of this.units)u.node.dispose(false,true);this.units=[];
     const columns=state.floor.length<=5?Math.max(1,state.floor.length):4,rows=Math.ceil(state.floor.length/columns);
@@ -317,7 +353,7 @@ export class Arena {
     const label=this.textPlane('energy-'+area+index,String(value),128,128,value>=10?82:112);label.parent=node;label.position.y=.85;(label.material as StandardMaterial).alpha=.24;
     const marks=pointMarks(cards),pips=marks?this.textPlane('point-marks-'+area+index,marks,256,64,40,cards.some(c=>c.suit===3&&c.value===2)&&!cards.some(c=>c.suit===1&&c.value>=10)?'#f2c55e':'#d6e5ff'):null;
     if(pips){pips.parent=node;(pips.material as StandardMaterial).alpha=.85;}
-    const unit={node,solid,pick,radius,ring,label,pips,labelSize:size*.9*.75,minPixels:value>=10?24:18,layoutScale:1,base,index,area,value,phase:index*1.4,owner,color};this.units.push(unit);return unit;
+    const unit={node,solid,cards,pick,radius,ring,label,pips,labelSize:size*.9*.75,minPixels:value>=10?24:18,layoutScale:1,base,index,area,value,phase:index*1.4,owner,color};this.units.push(unit);return unit;
   }
   highlight(hand:number|null,floor:number[]) {
     this.selectedFloor=[...floor];
@@ -343,6 +379,7 @@ export class Arena {
   async animate(event:BattleEvent) {
     this.animating=true;
     try{
+    const droppedCenter=event.actor===0&&this.dropOrigin?.index===event.hand?this.dropOrigin.center.clone():null;
     if(event.actor===0&&this.dropOrigin?.index===event.hand){
       const source=this.units.find(u=>u.area==='hand'&&u.index===event.hand);
       if(source){source.base.copyFrom(this.dropOrigin.position);source.node.position.copyFrom(source.base);}
@@ -376,7 +413,8 @@ export class Arena {
       target.dispose(false,true);this.burst(center.add(new Vector3(0,.85,0)),resultColor);
     }else{
       const shape=this.solid('deployment',event.value,this.sizeFor(event.value,.7));shape.material=this.material('deploy-material',this.colorFor([event.card]));shape.isPickable=false;
-      await this.tween(350,t=>{shape.position=new Vector3((t-.5)*1.4,1+Math.sin(t*Math.PI),((event.actor===0?-4:4)*(1-t)));shape.rotation.y=t*4;});shape.dispose(false,true);
+      const start=droppedCenter??new Vector3(0,1,event.actor===0?-4:4);
+      await this.tween(350,t=>{shape.position=Vector3.Lerp(start,new Vector3(0,1,0),t);shape.position.y+=Math.sin(t*Math.PI)*.6;shape.rotation.y=t*4;});shape.dispose(false,true);
     }
     }finally{this.animating=false;}
   }

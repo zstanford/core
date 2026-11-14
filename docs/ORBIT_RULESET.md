@@ -81,3 +81,7 @@ These defaults are open to revision after playtesting.
 Battle logic lives in web/engine/src/battle.rs. The shared move generator and two upstream source files gained opt-in numeric build ceilings. Classic callers still default to ten and retain their prior behavior. Battle builds opt in to thirteen.
 
 Round advancement is explicit; captures, field formations, and point lead carry forward unchanged. New version-2 saves are stored separately from the earlier hull-combat prototype. Rules resolve before animations, preserving deterministic replay if the page reloads mid-morph.
+
+### Drag-first move confirmation
+
+Drop a hand shape onto formations to preview legal capture/fusion results, or empty table space to preview deployment. Confirm commits one move and begins Sentinel’s reply. Undo cancels only the uncommitted preview, preserving the hand, field, score, and saved match. Ambiguous drops offer their legal outcomes in a contextual result picker. Off-table and illegal drops return to the hand. No persistent action-mode toolbar is shown.

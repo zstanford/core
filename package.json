@@ -9,7 +9,8 @@
     "build": "sh battle/build.sh",
     "build:client": "vite build",
     "verify": "node battle/verify.mjs",
-    "verify:hand": "node --test battle/hand-anchor.test.mjs"
+    "verify:hand": "node --test battle/hand-anchor.test.mjs",
+    "verify:drafts": "node --test battle/move-draft.test.mjs"
   },
   "dependencies": { "@babylonjs/core": "^8.0.0" },
   "devDependencies": { "typescript": "^5.9.0", "vite": "^7.0.0" }
