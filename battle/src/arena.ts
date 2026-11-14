@@ -16,12 +16,14 @@ import {CreateLines,CreateLineSystem} from '@babylonjs/core/Meshes/Builders/line
 import {CreatePolyhedron} from '@babylonjs/core/Meshes/Builders/polyhedronBuilder';
 import {CreateTorus} from '@babylonjs/core/Meshes/Builders/torusBuilder';
 import {CreateSphere} from '@babylonjs/core/Meshes/Builders/sphereBuilder';
+import {CreatePlane} from '@babylonjs/core/Meshes/Builders/planeBuilder';
+import {DynamicTexture} from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import '@babylonjs/core/Rendering/edgesRenderer';
 import '@babylonjs/core/Culling/ray';
 const MeshBuilder={CreateBox,CreateCylinder,CreateLines,CreateLineSystem,CreatePolyhedron,CreateTorus,CreateSphere};
 import type {BattleState,BattleEvent} from './types';
 
-type Unit={node:TransformNode;solid:Mesh;ring:Mesh;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number};
+type Unit={node:TransformNode;solid:Mesh;ring:Mesh;label:Mesh;labelSize:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number};
 const cyan=Color3.FromHexString('#54f2da'), pink=Color3.FromHexString('#ff67b8'),neutral=Color3.FromHexString('#9eacf2');
 export class Arena {
   readonly engine:Engine;
@@ -65,6 +67,13 @@ export class Arena {
       if(!this.reduced){
         for(const unit of this.units){unit.solid.rotation.y+=dt*.24;unit.solid.rotation.z=Math.sin(this.clock*.45+unit.phase)*.12;unit.solid.position.y=.85+Math.sin(this.clock*1.1+unit.phase)*.11;}
         this.cores.forEach((m,i)=>{m.rotation.y+=dt*(i?-.1:.1);});
+      }
+      // Billboard labels stay upright while solids rotate. Keep small tiers readable on phones.
+      for(const unit of this.units){
+        unit.label.position.y=unit.solid.position.y;
+        const distance=Vector3.Distance(this.camera.globalPosition,unit.solid.getAbsolutePosition());
+        const worldPerPixel=2*distance*Math.tan(this.camera.fov/2)/Math.max(1,this.canvas.clientHeight);
+        unit.label.scaling.setAll(Math.max(unit.labelSize,worldPerPixel*18)/unit.node.scaling.x);
       }
       this.scene.render();
     });
@@ -133,10 +142,17 @@ export class Arena {
     solid.material=this.material('shape-material',color);solid.enableEdgesRendering();solid.edgesWidth=1.8;solid.edgesColor=new Color4(color.r,color.g,color.b,1);solid.metadata={area,index};
     const ring=MeshBuilder.CreateTorus('selection',{diameter:1.65*scale,thickness:.018,tessellation:48},this.scene);ring.parent=node;ring.position.y=.01;ring.material=this.material('selection-material',color);ring.isPickable=false;
     const pick=MeshBuilder.CreateSphere('pick-target',{diameter:1.65*scale,segments:8},this.scene);pick.parent=node;pick.position.y=.85;pick.visibility=0;pick.metadata={area,index};
-    const unit={node,solid,ring,base,index,area,value,phase:index*1.4};this.units.push(unit);return unit;
+    const label=CreatePlane('energy-'+area+index,{size:1},this.scene);label.parent=node;label.position.y=.85;label.billboardMode=Mesh.BILLBOARDMODE_ALL;label.isPickable=false;label.renderingGroupId=2;
+    const texture=new DynamicTexture('energy-text-'+area+index,{width:128,height:128},this.scene,false);
+    texture.hasAlpha=true;
+    texture.drawText(String(value),null,104,'400 112px monospace','#e7fff8',null,true,true);
+    const labelMaterial=new StandardMaterial('energy-material-'+area+index,this.scene);labelMaterial.diffuseTexture=texture;labelMaterial.useAlphaFromDiffuseTexture=true;labelMaterial.emissiveColor=Color3.White();labelMaterial.disableLighting=true;labelMaterial.backFaceCulling=false;labelMaterial.alpha=.24;label.material=labelMaterial;
+    this.glow.addExcludedMesh(label);
+    // 75% of the original mockup's numeral scale; a screen-space floor preserves legibility.
+    const unit={node,solid,ring,label,labelSize:size*.9*.75,base,index,area,value,phase:index*1.4};this.units.push(unit);return unit;
   }
   highlight(hand:number|null,floor:number[]) {
-    for(const unit of this.units){const active=unit.area==='hand'?unit.index===hand:floor.includes(unit.index);unit.ring.visibility=active?1:.2;unit.node.scaling.setAll(active?1.14:1);}
+    for(const unit of this.units){const active=unit.area==='hand'?unit.index===hand:floor.includes(unit.index);unit.ring.visibility=active?1:.2;unit.node.scaling.setAll(active?1.14:1);(unit.label.material as StandardMaterial).alpha=active?.95:.24;}
   }
   resetCamera(){this.camera.alpha=-Math.PI/2;this.camera.beta=1.03;this.camera.radius=Math.max(16,5.5/(Math.max(.6,this.canvas.clientWidth/this.canvas.clientHeight)*Math.tan(.4))+5);}
   setSound(enabled:boolean){this.muted=!enabled;if(enabled){this.audio??=new AudioContext();void this.audio.resume();}}

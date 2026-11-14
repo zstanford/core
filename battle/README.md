@@ -19,6 +19,8 @@ Open the printed local URL. `npm run build` compiles Rust, runs TypeScript check
 
 Select a solid from your arsenal, then select field formations in 3D or with the labeled buttons. Choose a legal action and confirm it. The rival responds automatically. Drag to orbit, scroll to zoom, or reset the view. `Find a move` highlights a valid action without playing it.
 
+Small energy numbers sit inside the solids and formation cores. They stay faint at rest and brighten on selection, following the approved smaller Focus boost treatment. Numbers face the camera independently of the rotating geometry, with a minimum screen size for phone readability. Labels do not intercept shape picking.
+
 - **Strike:** Suipi capture. Selected field energies must match the arsenal shape, individually or in groups that sum to its energy. Damage is twice the played shape's energy.
 - **Forge / lock:** Suipi building and grouping. Keep a matching finisher in your arsenal. A locked formation retains its energy but can still be captured by either side.
 - **Deploy:** Suipi discard restrictions apply. A shape cannot duplicate a field energy or abandon a build you own.
