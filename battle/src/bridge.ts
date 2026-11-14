@@ -10,7 +10,7 @@ export class Rules {
   private encoder=new TextEncoder();
   private decoder=new TextDecoder();
   async init() {
-    const response=await fetch('/engine.wasm');
+    const response=await fetch('/engine.wasm',{cache:'no-store'});
     if(!response.ok)throw new Error('Rules engine could not load.');
     const {instance}=await WebAssembly.instantiate(await response.arrayBuffer(),{env:{random_bytes:(ptr:number,len:number)=>crypto.getRandomValues(new Uint8Array(this.wasm.memory.buffer,ptr,len))}});
     this.wasm=instance.exports as unknown as Wasm;

@@ -1,168 +1,274 @@
-//! Geometric combat rules built on the original Suipi State and move validator.
-use super::choices;
+//! Orbit's 52-shape, cumulative Suipi tug-of-war. Numeric builds opt in to a ceiling of 13.
+use super::choices_with_limit;
 use playsuipi_core::{
     action::Annotation,
     card::Card,
-    pile::Pile,
-    rng::{Rng, SliceRandom},
-    state::{Player, State},
+    pile::{Mark, Pile},
+    rng::Rng,
+    state::State,
 };
 use serde_json::{json, Value};
-use std::{cell::RefCell, collections::VecDeque};
-
-const HULL: u8 = 60;
-const SWEEP_DAMAGE: u8 = 8;
-
+use std::cell::RefCell;
+const VERSION: u8 = 2;
+const ROUNDS: u8 = 3;
+fn special(c: &Card) -> u8 {
+    if c.value == 1 {
+        1
+    } else if c.suit == 1 && c.value >= 10 {
+        c.value - 8
+    } else if c.suit == 3 && c.value == 2 {
+        1
+    } else {
+        0
+    }
+}
+fn card_json(c: &Card) -> Value {
+    json!({"id":u8::from(*c),"value":c.value,"suit":c.suit,"points":special(c)})
+}
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Score {
+    points: u16,
+    captured: usize,
+    gold: usize,
+    ones: u16,
+    diamonds: u16,
+    gold_two: u16,
+    sweeps: u16,
+    most_shapes: u16,
+    most_gold: u16,
+}
+impl Score {
+    fn json(&self) -> Value {
+        json!({"points":self.points,"captured":self.captured,"gold":self.gold,"ones":self.ones,"diamonds":self.diamonds,"goldTwo":self.gold_two,"sweeps":self.sweeps,"mostShapes":self.most_shapes,"mostGold":self.most_gold})
+    }
+}
+fn scores(s: &State) -> [Score; 2] {
+    let players = [&s.opponent, &s.dealer];
+    let mut out: [Score; 2] = std::array::from_fn(|i| {
+        let c = players[i].into_pair_cards();
+        Score {
+            captured: c.len(),
+            gold: c.iter().filter(|c| c.suit == 3).count(),
+            ones: c.iter().filter(|c| c.value == 1).count() as u16,
+            diamonds: c
+                .iter()
+                .filter(|c| c.suit == 1 && c.value >= 10)
+                .map(|c| special(c) as u16)
+                .sum(),
+            gold_two: c.iter().filter(|c| c.suit == 3 && c.value == 2).count() as u16,
+            sweeps: players[i].suipi_count as u16,
+            ..Score::default()
+        }
+    });
+    for i in 0..2 {
+        if out[i].captured > out[1 - i].captured {
+            out[i].most_shapes = 3;
+        }
+        if out[i].gold > out[1 - i].gold {
+            out[i].most_gold = 1;
+        }
+        let s = &mut out[i];
+        s.points = s.ones + s.diamonds + s.gold_two + s.sweeps + s.most_shapes + s.most_gold;
+    }
+    out
+}
+fn lead(s: &State) -> i16 {
+    let p = scores(s);
+    p[0].points as i16 - p[1].points as i16
+}
+fn winner(a: i16, b: i16) -> Option<usize> {
+    match a.cmp(&b) {
+        std::cmp::Ordering::Greater => Some(0),
+        std::cmp::Ordering::Less => Some(1),
+        _ => None,
+    }
+}
+fn pickup(s: &mut State) {
+    let cards: Vec<Card> = s
+        .floor
+        .iter()
+        .flat_map(|p| p.cards.iter().copied())
+        .collect();
+    if !cards.is_empty() {
+        let p = Pile::new(cards, 0, Mark::Pair);
+        if s.last_score {
+            s.dealer.pairs.push(p);
+        } else {
+            s.opponent.pairs.push(p);
+        }
+        s.floor = vec![Pile::empty(); 13];
+    }
+}
 struct Battle {
     state: State,
     seed: [u8; 32],
-    hull: [u8; 2],
+    round: u8,
     turns: u16,
+    round_over: bool,
+    results: Vec<Value>,
     history: Vec<Value>,
     last: String,
 }
-
 impl Battle {
     fn new(seed: Option<[u8; 32]>) -> Self {
         let mut rng = seed.map(Rng::from_seed).unwrap_or_default();
         let seed = rng.rng_borrow().get_seed();
-        // Six energy tiers, four instances per tier. Opening teaches 3 + 4 = 7.
-        let human = [3, 4, 7, 5, 8].map(|v| Card::new(v, 0));
-        let rival = [3, 4, 7, 6, 8].map(|v| Card::new(v, 2));
-        let floor = [Card::new(3, 1), Card::new(4, 1)];
-        let used: Vec<Card> = human.iter().chain(&rival).chain(&floor).copied().collect();
-        let mut deck: Vec<Card> = (0..4)
-            .flat_map(|s| (3..=8).map(move |v| Card::new(v, s)))
-            .filter(|c| !used.contains(c))
-            .collect();
-        deck.shuffle(rng.rng_borrow_mut());
-        let mut piles: Vec<Pile> = floor.into_iter().map(Pile::single).collect();
-        piles.resize_with(13, Pile::empty);
+        let mut state = State::default();
+        state.init_deck();
+        state.shuffle_deck(rng.rng_borrow_mut());
+        state.deal_hands();
+        state.floor = vec![Pile::empty(); 13];
+        for i in 0..4 {
+            loop {
+                let c = state.deck.pop_front().unwrap();
+                if special(&c) == 0
+                    && !state
+                        .floor
+                        .iter()
+                        .any(|p| !p.is_empty() && p.value == c.value)
+                {
+                    state.floor[i] = Pile::single(c);
+                    break;
+                }
+                state.deck.push_back(c);
+            }
+        }
         Self {
-            state: State {
-                deck: VecDeque::from(deck),
-                floor: piles,
-                opponent: Player::new(human.into_iter().map(Pile::single).collect()),
-                dealer: Player::new(rival.into_iter().map(Pile::single).collect()),
-                ..State::default()
-            },
+            state,
             seed,
-            hull: [HULL; 2],
+            round: 1,
             turns: 0,
+            round_over: false,
+            results: vec![],
             history: vec![],
-            last: "Combine battlefield energy. Leave no formation unguarded.".into(),
+            last: "Four starters. Eight shapes each. Capture points to pull the line.".into(),
         }
     }
-
     fn finished(&self) -> bool {
-        self.hull.contains(&0)
-            || (self.state.deck.is_empty()
-                && self.state.opponent.card_count() == 0
-                && self.state.dealer.card_count() == 0)
+        self.results.len() == ROUNDS as usize
     }
-
-    fn snapshot(&self) -> Value {
-        let finished = self.finished();
-        json!({"hull":self.hull,"maxHull":HULL,"deck":self.state.deck.len(),"turn":u8::from(self.state.turn),
-            "turns":self.turns,"finished":finished,
-            "winner":if finished { match self.hull[0].cmp(&self.hull[1]) { std::cmp::Ordering::Greater=>json!(0),std::cmp::Ordering::Less=>json!(1),_=>Value::Null } } else {Value::Null},
-            "hand": self.state.opponent.hand.iter().enumerate().filter(|(_,p)|!p.is_empty()).map(|(i,p)|json!({"index":i,"value":p.value})).collect::<Vec<_>>(),
-            "otherCount":self.state.dealer.card_count(),
-            "floor":self.state.floor.iter().enumerate().filter(|(_,p)|!p.is_empty()).map(|(i,p)|json!({"index":i,"value":p.value,"parts":p.cards.iter().map(|c|c.value).collect::<Vec<_>>(),"owner":if p.cards.len()>1 {json!(u8::from(p.owner))}else{Value::Null},"locked":p.is_group()})).collect::<Vec<_>>(),
-            "captures":[self.state.opponent.into_pair_cards().len(),self.state.dealer.into_pair_cards().len()],
-            "sweeps":[self.state.opponent.suipi_count,self.state.dealer.suipi_count],"last":self.last})
-    }
-
-    fn options(&self, args: &Value) -> Vec<Value> {
-        if self.finished() {
-            return vec![];
+    fn wins(&self) -> [usize; 2] {
+        let mut w = [0; 2];
+        for r in &self.results {
+            if let Some(i) = r["winner"].as_u64() {
+                w[i as usize] += 1;
+            }
         }
-        let Some(hand) = args["hand"].as_u64() else {
-            return vec![];
-        };
-        let Ok(floor) = serde_json::from_value::<Vec<usize>>(args["floor"].clone()) else {
-            return vec![];
-        };
-        let kind = args["kind"].as_str().unwrap_or("");
-        let v = self
-            .state
-            .player()
-            .hand
-            .get(hand as usize)
-            .map(|p| p.value)
-            .unwrap_or(0);
-        choices(&self.state, hand as usize, &floor, kind)
-            .into_iter()
-            .map(|mut o| {
-                let sweep = kind == "capture" && floor.len() == self.state.floor_count();
-                o["damage"] = json!(if kind == "capture" {
-                    v * 2 + if sweep { SWEEP_DAMAGE } else { 0 }
-                } else {
-                    0
-                });
-                o["sweep"] = json!(sweep);
-                o
-            })
-            .collect()
+        w
     }
-
-    fn apply(&mut self, args: &Value) -> Result<Value, String> {
-        let options = self.options(args);
-        let Some(option) = options
-            .iter()
-            .find(|o| o["annotation"] == args["annotation"])
-        else {
-            return Err("That formation is not a legal move.".into());
-        };
-        let hand = args["hand"].as_u64().unwrap() as usize;
-        let floor: Vec<usize> = serde_json::from_value(args["floor"].clone()).unwrap();
-        let kind = args["kind"].as_str().unwrap();
-        let actor = usize::from(self.state.turn);
-        let value = self.state.player().hand[hand].value;
-        let parts: Vec<u8> = floor
-            .iter()
-            .flat_map(|i| self.state.floor[*i].cards.iter().map(|c| c.value))
-            .collect();
-        let m = Annotation::new(args["annotation"].as_str().unwrap().into())
+    fn match_winner(&self) -> Option<usize> {
+        if !self.finished() {
+            return None;
+        }
+        let w = self.wins();
+        winner(w[0] as i16, w[1] as i16).or_else(|| {
+            let s = scores(&self.state);
+            winner(s[0].points as i16, s[1].points as i16)
+        })
+    }
+    fn snapshot(&self) -> Value {
+        let s = scores(&self.state);
+        json!({"version":VERSION,"round":self.round,"roundOver":self.round_over,"rounds":self.results,"roundWins":self.wins(),"deck":self.state.deck.len(),"turn":usize::from(self.state.turn),"turns":self.turns,"finished":self.finished(),"winner":self.match_winner(),
+ "points":[s[0].points,s[1].points],"lead":lead(&self.state),"scores":[s[0].json(),s[1].json()],
+ "hand":self.state.opponent.hand.iter().enumerate().filter(|(_,p)|!p.is_empty()).map(|(i,p)|{let mut c=card_json(&p.cards[0]);c["index"]=json!(i);c}).collect::<Vec<_>>(),"otherCount":self.state.dealer.card_count(),
+ "floor":self.state.floor.iter().enumerate().filter(|(_,p)|!p.is_empty()).map(|(i,p)|{let suit=p.cards.first().filter(|c|p.cards.iter().all(|o|o.suit==c.suit)).map(|c|c.suit);json!({"index":i,"value":p.value,"parts":p.cards.iter().map(card_json).collect::<Vec<_>>(),"suit":suit,"points":p.cards.iter().map(|c|special(c) as u16).sum::<u16>(),"owner":if p.cards.len()>1{Some(usize::from(p.owner))}else{None},"locked":p.is_group()})}).collect::<Vec<_>>(),
+ "capturedCards":[self.state.opponent.into_pair_cards().iter().map(card_json).collect::<Vec<_>>(),self.state.dealer.into_pair_cards().iter().map(card_json).collect::<Vec<_>>()],"captures":[s[0].captured,s[1].captured],"sweeps":[s[0].sweeps,s[1].sweeps],"last":self.last})
+    }
+    fn projected(&self, annotation: &str) -> Result<(State, bool), String> {
+        let m = Annotation::new(annotation.into())
             .to_move()
             .map_err(|e| e.to_string())?;
         let mut next = self.state.clone();
-        next.apply(m).map_err(|e| e.to_string())?;
-        self.state = next;
-        let damage = option["damage"].as_u64().unwrap() as u8;
-        self.hull[1 - actor] = self.hull[1 - actor].saturating_sub(damage);
-        if option["sweep"] == true {
-            self.state.player_mut().suipi_count += 1;
+        next.apply_with_limit(m, 13).map_err(|e| e.to_string())?;
+        let sweep = next.floor_count() == 0;
+        if sweep {
+            next.player_mut().suipi_count += 1;
         }
+        if self.round == 3 && next.opponent.card_count() == 0 && next.dealer.card_count() == 0 {
+            pickup(&mut next);
+        }
+        Ok((next, sweep))
+    }
+    fn options(&self, a: &Value) -> Vec<Value> {
+        if self.finished() || self.round_over {
+            return vec![];
+        }
+        let Some(hand) = a["hand"].as_u64() else {
+            return vec![];
+        };
+        let Ok(floor) = serde_json::from_value::<Vec<usize>>(a["floor"].clone()) else {
+            return vec![];
+        };
+        let actor = usize::from(self.state.turn);
+        let old = scores(&self.state);
+        choices_with_limit(
+            &self.state,
+            hand as usize,
+            &floor,
+            a["kind"].as_str().unwrap_or(""),
+            13,
+        )
+        .into_iter()
+        .filter_map(|mut o| {
+            let (next, sweep) = self.projected(o["annotation"].as_str()?).ok()?;
+            let new = scores(&next);
+            let sign = if actor == 0 { 1 } else { -1 };
+            o["sweep"] = json!(sweep);
+            o["shift"] = json!((lead(&next) - lead(&self.state)) * sign);
+            o["captured"] = json!(new[actor].captured - old[actor].captured);
+            o["points"] = json!(new[actor].points as i16 - old[actor].points as i16);
+            Some(o)
+        })
+        .collect()
+    }
+    fn apply(&mut self, a: &Value) -> Result<Value, String> {
+        let options = self.options(a);
+        let Some(o) = options.iter().find(|o| o["annotation"] == a["annotation"]) else {
+            return Err("That formation is not a legal move.".into());
+        };
+        let hand = a["hand"].as_u64().unwrap() as usize;
+        let kind = a["kind"].as_str().unwrap();
+        let floor: Vec<usize> = serde_json::from_value(a["floor"].clone()).unwrap();
+        let actor = usize::from(self.state.turn);
+        let card = self.state.player().hand[hand].cards[0];
+        let parts: Vec<Value> = floor
+            .iter()
+            .flat_map(|i| self.state.floor[*i].cards.iter().map(card_json))
+            .collect();
+        let (next, sweep) = self.projected(a["annotation"].as_str().unwrap())?;
+        self.state = next;
         self.turns += 1;
         let who = if actor == 0 { "You" } else { "Sentinel" };
         self.last = match kind {
             "capture" => format!(
-                "{who} struck for {damage} damage{}.",
-                if option["sweep"] == true {
-                    " · SUIPI"
-                } else {
-                    ""
-                }
+                "{who} captured {} shapes. Point-lead shift: {:+}{}.",
+                o["captured"],
+                o["shift"].as_i64().unwrap(),
+                if sweep { " · SUIPI +1" } else { "" }
             ),
-            "build" => format!("{who} forged a formation. It can be stolen."),
-            _ => format!("{who} deployed a shape into shared space."),
+            "build" => format!(
+                "{who} forged energy {}. Original suits and points remain inside.",
+                o["target"]
+            ),
+            _ => format!("{who} deployed energy {} into shared space.", card.value),
         };
-        // Draw into the consumed slot; the opponent does not see this identity.
-        if let Some(card) = self.state.deck.pop_front() {
-            self.state.player_mut().hand[hand] = Pile::single(card);
-        }
         self.state.turn = !self.state.turn;
-        if self.state.player().card_count() == 0 && !self.finished() {
-            self.state.turn = !self.state.turn;
+        let mut round_end = Value::Null;
+        if self.state.opponent.card_count() == 0 && self.state.dealer.card_count() == 0 {
+            self.round_over = true;
+            let s = scores(&self.state);
+            round_end = json!({"round":self.round,"winner":winner(s[0].points as i16,s[1].points as i16),"points":[s[0].points,s[1].points],"lead":lead(&self.state)});
+            self.results.push(round_end.clone());
         }
         Ok(
-            json!({"actor":actor,"hand":hand,"kind":kind,"value":value,"target":option["target"],"damage":damage,"sweep":option["sweep"],"floor":floor,"parts":parts,"state":self.snapshot()}),
+            json!({"actor":actor,"hand":hand,"kind":kind,"value":card.value,"suit":card.suit,"card":card_json(&card),"target":o["target"],"shift":o["shift"],"captured":o["captured"],"sweep":sweep,"floor":floor,"parts":parts,"roundEnd":round_end,"state":self.snapshot()}),
         )
     }
-
-    // Rival searches legal moves using only its hand and public floor. No hidden-hand lookahead.
+    // Search uses the active player's hand and public field, never the hidden opposing hand.
     fn best_move(&self) -> Option<Value> {
+        if self.round_over || self.finished() {
+            return None;
+        }
         let indices: Vec<usize> = self
             .state
             .floor
@@ -180,48 +286,80 @@ impl Battle {
             .enumerate()
             .filter(|(_, p)| !p.is_empty())
         {
-            for kind in ["capture", "build", "discard"] {
-                for mask in 0usize..(1 << indices.len()) {
+            let targets: Vec<u16> = self
+                .state
+                .player()
+                .hand
+                .iter()
+                .enumerate()
+                .filter(|(i, p)| *i != h && !p.is_empty())
+                .map(|(_, p)| p.value as u16)
+                .collect();
+            for mask in 0usize..(1 << indices.len()) {
+                let floor: Vec<usize> = indices
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| mask & (1 << i) != 0)
+                    .map(|(_, i)| *i)
+                    .collect();
+                let sum: u16 = floor
+                    .iter()
+                    .map(|i| self.state.floor[*i].value as u16)
+                    .sum();
+                for kind in ["capture", "build", "discard"] {
                     if (mask == 0) != (kind == "discard") {
                         continue;
                     }
-                    let floor: Vec<usize> = indices
-                        .iter()
-                        .enumerate()
-                        .filter(|(i, _)| mask & (1 << i) != 0)
-                        .map(|(_, i)| *i)
-                        .collect();
-                    let mut args = json!({"hand":h,"floor":floor,"kind":kind});
-                    for option in self.options(&args) {
+                    if kind == "capture"
+                        && (!sum.is_multiple_of(p.value as u16)
+                            || floor.iter().any(|i| self.state.floor[*i].value > p.value))
+                    {
+                        continue;
+                    }
+                    if kind == "build"
+                        && !targets.iter().any(|t| {
+                            (sum + p.value as u16).is_multiple_of(*t)
+                                && floor
+                                    .iter()
+                                    .all(|i| self.state.floor[*i].value as u16 <= *t)
+                        })
+                    {
+                        continue;
+                    }
+                    let mut a = json!({"hand":h,"floor":floor,"kind":kind});
+                    for o in self.options(&a) {
+                        let risk = special(&p.cards[0]) as i32;
                         let score = if kind == "capture" {
-                            1000 + option["damage"].as_i64().unwrap_or(0) as i32 * 10
-                                + floor.len() as i32
+                            1000 + o["shift"].as_i64().unwrap_or(0) as i32 * 120
+                                + o["captured"].as_i64().unwrap_or(0) as i32 * 4
                         } else if kind == "build" {
-                            100 + option["target"].as_i64().unwrap_or(0) as i32
+                            40 - risk * 15 + o["target"].as_i64().unwrap_or(0) as i32
                         } else {
-                            10 - p.value as i32
+                            20 - risk * 20 - p.value as i32
                         };
                         if best.as_ref().is_none_or(|(s, _)| score > *s) {
-                            args["annotation"] = option["annotation"].clone();
-                            best = Some((score, args.clone()));
+                            a["annotation"] = o["annotation"].clone();
+                            best = Some((score, a.clone()));
                         }
                     }
                 }
             }
         }
-        best.map(|(_, args)| args)
+        best.map(|(_, m)| m)
     }
-
-    fn play(&mut self, args: &Value) -> Result<Value, String> {
+    fn play(&mut self, a: &Value) -> Result<Value, String> {
         if self.finished() {
-            return Err("Skirmish finished. Start a new battle.".into());
+            return Err("Match finished. Start a new match.".into());
+        }
+        if self.round_over {
+            return Err("Round finished. Continue to the next deal.".into());
         }
         if self.state.turn {
             return Err("Wait for Sentinel's turn.".into());
         }
-        let mut events = vec![self.apply(args)?];
-        self.history.push(args.clone());
-        while self.state.turn && !self.finished() {
+        let mut events = vec![self.apply(a)?];
+        self.history.push(a.clone());
+        while self.state.turn && !self.round_over {
             let Some(rival) = self.best_move() else {
                 return Err("Rival could not find a legal move.".into());
             };
@@ -229,95 +367,245 @@ impl Battle {
         }
         Ok(json!({"battle":self.snapshot(),"events":events}))
     }
-}
-
-thread_local! {static BATTLE:RefCell<Option<Battle>>=const{RefCell::new(None)};}
-
-pub fn request(args: Value) -> Value {
-    BATTLE.with(|cell|{
-        let mut saved=cell.borrow_mut();
-        let battle=saved.get_or_insert_with(||Battle::new(None));
-        match args["type"].as_str().unwrap_or("") {
-            "battle_new"=>{let seed=serde_json::from_value(args["seed"].clone()).ok();*battle=Battle::new(seed);json!({"battle":battle.snapshot()})},
-            "battle_state"=>json!({"battle":battle.snapshot()}),
-            "battle_choices"=>json!({"choices":if battle.state.turn {vec![]}else{battle.options(&args)}}),
-            "battle_hint"=>json!({"hint":if battle.state.turn||battle.finished(){None}else{battle.best_move()}}),
-            "battle_play"=>battle.play(&args).unwrap_or_else(|e|json!({"error":e})),
-            "battle_save"=>json!({"seed":battle.seed,"moves":battle.history}),
-            "battle_restore"=>{
-                let Ok(seed)=serde_json::from_value::<[u8;32]>(args["seed"].clone()) else {return json!({"error":"Invalid saved seed."});};
-                let Some(moves)=args["moves"].as_array() else {return json!({"error":"Invalid saved moves."});};
-                if moves.len()>32 {return json!({"error":"Saved battle exceeds turn limit."});}
-                let mut restored=Battle::new(Some(seed));
-                for m in moves {if let Err(e)=restored.play(m){return json!({"error":e});}}
-                *battle=restored;json!({"battle":battle.snapshot()})
-            },
-            _=>json!({"error":"Unknown battle request."}),
+    fn next_round(&mut self) -> Result<Value, String> {
+        if !self.round_over || self.finished() {
+            return Err("The next deal is not available.".into());
         }
-    })
+        self.state.deal_hands();
+        self.state.turn = false;
+        self.round += 1;
+        self.round_over = false;
+        self.last = format!(
+            "Round {}. Eight new shapes each; the line and battlefield carry forward.",
+            self.round
+        );
+        self.history.push(json!({"advance":true}));
+        Ok(json!({"battle":self.snapshot()}))
+    }
 }
-
+thread_local! {static BATTLE:RefCell<Option<Battle>>=const{RefCell::new(None)};}
+pub fn request(a: Value) -> Value {
+    BATTLE.with(|cell|{let mut saved=cell.borrow_mut();let b=saved.get_or_insert_with(||Battle::new(None));match a["type"].as_str().unwrap_or(""){
+ "battle_new"=>{*b=Battle::new(serde_json::from_value(a["seed"].clone()).ok());json!({"battle":b.snapshot()})},
+ "battle_state"=>json!({"battle":b.snapshot()}),"battle_choices"=>json!({"choices":if b.state.turn{vec![]}else{b.options(&a)}}),"battle_hint"=>json!({"hint":if b.state.turn{None}else{b.best_move()}}),
+ "battle_play"=>b.play(&a).unwrap_or_else(|e|json!({"error":e})),"battle_next"=>b.next_round().unwrap_or_else(|e|json!({"error":e})),"battle_save"=>json!({"version":VERSION,"seed":b.seed,"moves":b.history}),
+ "battle_restore"=>{
+ if a["version"]!=VERSION{return json!({"error":"Saved battle uses an older ruleset. Start a new match."});}let Ok(seed)=serde_json::from_value::<[u8;32]>(a["seed"].clone())else{return json!({"error":"Invalid saved seed."});};let Some(moves)=a["moves"].as_array()else{return json!({"error":"Invalid saved moves."});};if moves.len()>26{return json!({"error":"Saved match exceeds turn limit."});}
+ let mut restored=Battle::new(Some(seed));for m in moves{let r=if m["advance"]==true{restored.next_round()}else{restored.play(m)};if let Err(e)=r{return json!({"error":e});}}*b=restored;json!({"battle":b.snapshot()})},
+ _=>json!({"error":"Unknown battle request."})}})
+}
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn opening_capture_awards_damage_and_sweep() {
+    fn pile(v: u8, s: u8) -> Pile {
+        Pile::single(Card::new(v, s))
+    }
+    fn fixture() -> Battle {
         let mut b = Battle::new(Some([0; 32]));
-        let mut args = json!({"hand":2,"floor":[0,1],"kind":"capture"});
-        let o = b.options(&args);
-        assert_eq!(o.len(), 1);
-        assert_eq!(o[0]["damage"], 22);
-        args["annotation"] = o[0]["annotation"].clone();
-        let e = b.apply(&args).unwrap();
-        assert_eq!(b.hull, [60, 38]);
-        assert_eq!(e["sweep"], true);
-        assert_eq!(b.state.opponent.suipi_count, 1);
+        b.state = State::default();
+        b.state.floor = vec![Pile::empty(); 13];
+        b.state.opponent.hand = vec![Pile::empty(); 8];
+        b.state.dealer.hand = vec![Pile::empty(); 8];
+        b.state.dealer.hand[0] = pile(9, 2);
+        b
     }
     #[test]
-    fn rival_can_hijack_your_build() {
-        let mut b = Battle::new(Some([0; 32]));
-        let mut args = json!({"hand":0,"floor":[1],"kind":"build"});
-        let o = b.options(&args);
-        assert_eq!(o.len(), 1);
-        args["annotation"] = o[0]["annotation"].clone();
-        b.apply(&args).unwrap();
-        assert_eq!(b.hull, [60, 60]);
-        let m = b.best_move().unwrap();
-        let event = b.apply(&m).unwrap();
-        assert_eq!(event["kind"], "capture");
-        assert_eq!(event["value"], 7);
-        assert_eq!(b.hull[0], 46);
+    fn deck_setup_has_52_identities_and_four_plain_starters() {
+        for seed in 0..8 {
+            let b = Battle::new(Some([seed; 32]));
+            assert_eq!(b.state.deck.len(), 32);
+            assert_eq!(b.state.opponent.card_count(), 8);
+            assert_eq!(b.state.dealer.card_count(), 8);
+            assert_eq!(b.state.floor_count(), 4);
+            assert!(b
+                .state
+                .floor
+                .iter()
+                .flat_map(|p| &p.cards)
+                .all(|c| special(c) == 0));
+            assert!(b.state.unique_floor());
+        }
     }
     #[test]
-    fn invalid_action_does_not_change_state() {
-        let mut b = Battle::new(Some([0; 32]));
-        let before = b.snapshot();
+    fn expanded_special_points_total_23() {
+        let mut s = State::default();
+        s.opponent.pairs = vec![Pile::new((0..52).map(Card::from).collect(), 0, Mark::Pair)];
+        assert_eq!(scores(&s)[0].points, 23);
+        assert_eq!(
+            (10..=13)
+                .map(|v| special(&Card::new(v, 1)))
+                .collect::<Vec<_>>(),
+            vec![2, 3, 4, 5]
+        );
+        assert_eq!(special(&Card::new(2, 3)), 1);
+    }
+    #[test]
+    fn fusion_to_13_preserves_original_points_and_classic_limit() {
+        let mut b = fixture();
+        b.state.opponent.hand[0] = pile(3, 2);
+        b.state.opponent.hand[1] = pile(13, 0);
+        b.state.floor[0] = pile(10, 1);
+        let mut a = json!({"hand":0,"floor":[0],"kind":"build"});
+        let o = b.options(&a);
+        assert_eq!(o.len(), 1);
+        a["annotation"] = o[0]["annotation"].clone();
+        b.apply(&a).unwrap();
+        assert_eq!(b.state.floor[0].value, 13);
+        assert_eq!(b.state.floor[0].cards.len(), 2);
+        assert_eq!(b.state.floor[0].cards.iter().map(special).sum::<u8>(), 2);
+        let mut a = pile(3, 2);
+        let mut z = pile(10, 1);
+        assert!(Pile::build(&mut a, &mut z).is_err());
+    }
+    #[test]
+    fn eleven_twelve_thirteen_are_numeric_and_sweeps_are_one() {
+        for target in 11..=13 {
+            let mut b = fixture();
+            b.state.opponent.hand[0] = pile(target, 1);
+            b.state.floor[0] = pile(target - 1, 0);
+            b.state.floor[1] = pile(1, 2);
+            let mut a = json!({"hand":0,"floor":[0,1],"kind":"capture"});
+            let o = b.options(&a);
+            assert_eq!(o.len(), 1);
+            a["annotation"] = o[0]["annotation"].clone();
+            let e = b.apply(&a).unwrap();
+            assert_eq!(e["sweep"], true);
+            assert_eq!(b.state.opponent.suipi_count, 1);
+            assert_eq!(b.state.opponent.into_pair_cards().len(), 3);
+        }
+    }
+    #[test]
+    fn majority_points_flip_and_ties_award_nothing() {
+        let mut s = State::default();
+        s.opponent.pairs = vec![Pile::new(
+            vec![Card::new(3, 3), Card::new(4, 0)],
+            0,
+            Mark::Pair,
+        )];
+        s.dealer.pairs = vec![pile(5, 2)];
+        assert_eq!(scores(&s)[0].most_shapes, 3);
+        assert_eq!(scores(&s)[0].most_gold, 1);
+        s.dealer.pairs.push(pile(6, 3));
+        assert_eq!(scores(&s)[0].most_shapes, 0);
+        assert_eq!(scores(&s)[1].most_shapes, 0);
+        assert_eq!(scores(&s)[0].most_gold, 0);
+        s.dealer.pairs.push(pile(7, 0));
+        assert_eq!(scores(&s)[1].most_shapes, 3);
+    }
+    #[test]
+    fn grouped_sevens_remain_seven_and_can_be_stolen() {
+        let mut b = fixture();
+        b.state.opponent.hand[0] = pile(7, 0);
+        b.state.opponent.hand[1] = pile(7, 2);
+        b.state.floor[0] = Pile::new(vec![Card::new(3, 0), Card::new(4, 1)], 7, Mark::Build);
+        let mut a = json!({"hand":0,"floor":[0],"kind":"build"});
+        let o = b.options(&a);
+        assert_eq!(o.len(), 1);
+        a["annotation"] = o[0]["annotation"].clone();
+        b.apply(&a).unwrap();
+        assert!(b.state.floor[0].is_group());
+        assert_eq!(b.state.floor[0].value, 7);
+        b.state.dealer.hand[0] = pile(7, 3);
+        let mut a = json!({"hand":0,"floor":[0],"kind":"capture"});
+        let o = b.options(&a);
+        assert_eq!(o.len(), 1);
+        a["annotation"] = o[0]["annotation"].clone();
+        b.apply(&a).unwrap();
+        assert_eq!(b.state.dealer.into_pair_cards().len(), 4);
+    }
+    #[test]
+    fn invalid_action_is_atomic() {
+        let mut b = Battle::new(Some([1; 32]));
+        let old = b.snapshot();
         assert!(b
-            .play(&json!({"hand":0,"floor":[1],"kind":"capture","annotation":"*B&1"}))
+            .play(&json!({"hand":99,"floor":[],"kind":"capture","annotation":"bad"}))
             .is_err());
-        assert_eq!(before, b.snapshot());
+        assert_eq!(b.snapshot(), old);
     }
     #[test]
-    fn battles_finish_and_replay_with_conserved_cards() {
-        for seed in 0..16 {
+    fn mixed_twelve_keeps_gold_two_and_diamond_ten_points() {
+        let mut b = fixture();
+        b.state.opponent.hand[0] = pile(2, 3);
+        b.state.opponent.hand[1] = pile(12, 0);
+        b.state.floor[0] = pile(10, 1);
+        let mut build = json!({"hand":0,"floor":[0],"kind":"build"});
+        build["annotation"] = b.options(&build)[0]["annotation"].clone();
+        b.apply(&build).unwrap();
+        assert_eq!(b.state.floor[0].value, 12);
+        assert_eq!(b.state.floor[0].cards.iter().map(special).sum::<u8>(), 3);
+        b.state.turn = false;
+        let mut capture = json!({"hand":1,"floor":[0],"kind":"capture"});
+        capture["annotation"] = b.options(&capture)[0]["annotation"].clone();
+        b.apply(&capture).unwrap();
+        let score = scores(&b.state);
+        assert_eq!(score[0].diamonds, 2);
+        assert_eq!(score[0].gold_two, 1);
+        assert_eq!(score[0].captured, 3);
+    }
+    #[test]
+    fn final_pickup_goes_to_last_capturer_without_a_sweep() {
+        let mut b = fixture();
+        b.round = 3;
+        b.state.dealer.hand.fill(Pile::empty());
+        b.state.opponent.hand[0] = pile(4, 0);
+        b.state.floor[0] = pile(5, 0);
+        b.state.floor[1] = pile(6, 2);
+        b.state.last_score = true;
+        let mut drop = json!({"hand":0,"floor":[],"kind":"discard"});
+        drop["annotation"] = b.options(&drop)[0]["annotation"].clone();
+        let event = b.apply(&drop).unwrap();
+        assert_eq!(event["sweep"], false);
+        assert_eq!(b.state.dealer.into_pair_cards().len(), 3);
+        assert_eq!(b.state.opponent.into_pair_cards().len(), 0);
+        assert_eq!(b.state.floor_count(), 0);
+        assert_eq!(b.state.dealer.suipi_count, 0);
+        assert!(b.round_over);
+    }
+    #[test]
+    fn full_matches_use_48_turns_conserve_cards_and_carry_points() {
+        for seed in 0..12 {
             let mut b = Battle::new(Some([seed; 32]));
-            let mut player_turns = 0;
             while !b.finished() {
-                let count = b.state.deck.len()
-                    + b.state.opponent.card_count()
-                    + b.state.dealer.card_count()
-                    + b.state.opponent.into_pair_cards().len()
-                    + b.state.dealer.into_pair_cards().len()
-                    + b.state.floor.iter().map(|p| p.cards.len()).sum::<usize>();
-                assert_eq!(count, 24);
-                let args = b.best_move().unwrap();
-                b.play(&args).unwrap();
-                player_turns += 1;
-                assert!(player_turns <= 24);
+                let mut ids: Vec<u8> = b
+                    .state
+                    .deck
+                    .iter()
+                    .chain(b.state.opponent.hand.iter().flat_map(|p| &p.cards))
+                    .chain(b.state.dealer.hand.iter().flat_map(|p| &p.cards))
+                    .chain(b.state.floor.iter().flat_map(|p| &p.cards))
+                    .chain(b.state.opponent.pairs.iter().flat_map(|p| &p.cards))
+                    .chain(b.state.dealer.pairs.iter().flat_map(|p| &p.cards))
+                    .copied()
+                    .map(u8::from)
+                    .collect();
+                ids.sort_unstable();
+                assert_eq!(ids, (0u8..52).collect::<Vec<_>>());
+                if b.round_over {
+                    let before = lead(&b.state);
+                    let floor = b.state.floor.clone();
+                    b.next_round().unwrap();
+                    assert_eq!(lead(&b.state), before);
+                    assert_eq!(b.state.floor, floor);
+                    assert_eq!(b.state.opponent.card_count(), 8);
+                } else {
+                    let h = b.best_move().expect("legal move");
+                    b.play(&h).unwrap();
+                }
             }
+            assert_eq!(b.turns, 48);
+            assert_eq!(b.results.len(), 3);
+            assert_eq!(
+                b.state.opponent.into_pair_cards().len() + b.state.dealer.into_pair_cards().len(),
+                52
+            );
+            assert_eq!(b.state.floor_count(), 0);
             let mut replay = Battle::new(Some(b.seed));
             for m in &b.history {
-                replay.play(m).unwrap();
+                if m["advance"] == true {
+                    replay.next_round().unwrap();
+                } else {
+                    replay.play(m).unwrap();
+                }
             }
             assert_eq!(replay.snapshot(), b.snapshot());
         }

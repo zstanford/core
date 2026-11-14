@@ -1,3 +1,4 @@
+// Modified for Orbit: configurable build ceiling; classic play retains a ceiling of ten.
 use crate::card::Card;
 use std::fmt;
 
@@ -9,6 +10,7 @@ pub enum PileError {
     InvalidPairArg,
     BuildEqualValues,
     BuildHigherThanTen,
+    BuildAboveLimit(u8),
     GroupDifferentValues,
     GroupTwoSingles,
     PairDifferentValues,
@@ -25,6 +27,7 @@ impl fmt::Display for PileError {
                 PileError::InvalidPairArg => "Invalid pair argument",
                 PileError::BuildEqualValues => "You may not build two cards with the same value",
                 PileError::BuildHigherThanTen => "You may not build a value larger than 10",
+                PileError::BuildAboveLimit(_) => "Build exceeds the configured energy limit",
                 PileError::GroupDifferentValues =>
                     "You may not group two cards with different values",
                 PileError::GroupTwoSingles => "You may not group two individual cards together",
@@ -167,6 +170,11 @@ impl Pile {
 
     /// Create a build pile from two buildable piles
     pub fn build(x: &mut Pile, y: &mut Pile) -> Result<Pile, PileError> {
+        Self::build_with_limit(x, y, 10)
+    }
+
+    /// Combine numeric piles using the supplied energy ceiling.
+    pub fn build_with_limit(x: &mut Pile, y: &mut Pile, limit: u8) -> Result<Pile, PileError> {
         Pile::buildable(x)?;
         Pile::buildable(y)?;
         if x.cards
@@ -174,8 +182,12 @@ impl Pile {
             .any(|xc| y.cards.iter().any(|yc| xc.value == yc.value))
         {
             Err(PileError::BuildEqualValues)
-        } else if x.value + y.value > 10 {
-            Err(PileError::BuildHigherThanTen)
+        } else if x.value + y.value > limit {
+            Err(if limit == 10 {
+                PileError::BuildHigherThanTen
+            } else {
+                PileError::BuildAboveLimit(limit)
+            })
         } else {
             Ok(Pile::new(Pile::cards(x, y), x.value + y.value, Mark::Build))
         }

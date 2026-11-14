@@ -1,3 +1,4 @@
+// Modified for Orbit: opt-in numeric build limits; classic apply behavior is unchanged.
 use crate::action::{Address, Move, MoveError, Operation};
 use crate::card::{Card, Suit, Value};
 use crate::pile::{Mark, Pile, PileError};
@@ -365,6 +366,11 @@ impl State {
 
     /// Apply a move to the game state
     pub fn apply(&mut self, m: Move) -> Result<(), StateError> {
+        self.apply_with_limit(m, 10)
+    }
+
+    /// Apply a move with a numeric build ceiling chosen by the game adapter.
+    pub fn apply_with_limit(&mut self, m: Move, limit: u8) -> Result<(), StateError> {
         m.is_valid()?;
         let mut builds = vec![];
         for w in m.actions.windows(2).rev() {
@@ -373,7 +379,11 @@ impl State {
                     builds.push(w[1].address);
                 }
                 Operation::Active => {
-                    self.build(w[0].address, w[1].address)?;
+                    self.combine(
+                        |x, y| Pile::build_with_limit(x, y, limit),
+                        |g, z| g.replace(w[0].address, z),
+                        (w[0].address, w[1].address),
+                    )?;
                 }
             }
         }

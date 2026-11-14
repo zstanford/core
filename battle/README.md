@@ -1,74 +1,93 @@
-# Orbit: geometric Suipi combat
+# Orbit: Suipi tug-of-war
 
-A solo 3D skirmish against Sentinel, built with Babylon.js, TypeScript, and the existing Rust/WebAssembly rules bridge. The original table is packaged at `/classic/`.
+A solo 3D match against Sentinel, using Babylon.js + TypeScript and a Rust/WebAssembly rules engine. The classic card table remains at /classic/.
 
 ## Run
 
 From the repository root:
 
-```sh
-npm ci
-rustup target add wasm32-unknown-unknown
-npm run build
-npm run dev
-```
+    npm ci
+    rustup target add wasm32-unknown-unknown
+    npm run build
+    npm run dev
 
-Open the printed local URL. `npm run build` compiles Rust, runs TypeScript checks, then bundles the client and preserves the classic table in the distribution. After the first build, `npm run dev` serves live frontend edits; rebuild after Rust changes.
+Open the printed local URL. The build compiles Rust, checks TypeScript, bundles the game, and copies the classic table. Rebuild after Rust changes; frontend edits update through the dev server.
 
-## Play
+## Rules implemented
 
-Select a solid from your arsenal, then select field formations in 3D or with the labeled buttons. Choose a legal action and confirm it. The rival responds automatically. Drag to orbit, scroll to zoom, or reset the view. `Find a move` highlights a valid action without playing it.
+- 52 distinct shapes: energies 1–13 in four suits.
+- Gold represents spades; Crystal represents diamonds. Tide and Bloom represent clubs and hearts.
+- Four non-point starting shapes of distinct energies are dealt once.
+- Each player gets eight shapes in each of three rounds. No replacement draws within rounds.
+- Matching, additive captures, build ownership, retained finishers, stealing, and locked groups follow Suipi.
+- Numeric builds reach 13. Energies 11–13 have no face-card exceptions.
+- A fusion morphs into the same geometry as a dealt shape of its capture energy. Original identities remain inside it.
+- Two grouped 7-builds retain a locked capture value of 7; source cards and their points are preserved.
+- Capturing a build with two original shapes captures three shapes including the played finisher.
+- The shared battle line tracks current Suipi point difference. Original-shape and gold majorities remain contested.
+- At each hand boundary, the point leader wins that round. Position, captured holdings, and field formations carry forward.
+- All three deals are played. Most round wins takes the match; tied round wins use final point lead. Fully tied matches draw.
+- After round three, remaining field shapes go to the last capturer before final scoring. Pickup alone earns no sweep.
 
-Small energy numbers sit inside the solids and formation cores. They stay faint at rest and brighten on selection, following the approved smaller Focus boost treatment. Numbers face the camera independently of the rotating geometry, with a minimum screen size for phone readability. Labels do not intercept shape picking.
+## Scoring
 
-- **Strike:** Suipi capture. Selected field energies must match the arsenal shape, individually or in groups that sum to its energy. Damage is twice the played shape's energy.
-- **Forge / lock:** Suipi building and grouping. Keep a matching finisher in your arsenal. A locked formation retains its energy but can still be captured by either side.
-- **Deploy:** Suipi discard restrictions apply. A shape cannot duplicate a field energy or abandon a build you own.
-- **Suipi:** A full field clear adds eight damage.
+| Category | Points |
+| --- | ---: |
+| Most original shapes captured | 3 |
+| Most gold/spade shapes | 1 |
+| Gold 2 | 1 |
+| Each energy-1 shape | 1, four available |
+| Crystal 10 | 2 |
+| Crystal 11 | 3 |
+| Crystal 12 | 4 |
+| Crystal 13 | 5 |
+| Each Suipi sweep | 1 additional |
 
-Each core starts with 60 hull. There are 24 shapes: four copies of each energy from three through eight. The opening is fixed to teach a Crown capturing Tetra + Cube; the reserve deck is shuffled. A consumed arsenal slot draws one replacement while supplies remain. First core destroyed loses; if both arsenals run out, highest remaining hull wins. Equal remaining hull is a tie.
+There are 23 base points available, plus sweeps. Tied majority counts award neither side those points. The line uses the exact score difference and a display range of 23 plus total sweeps; it never truncates the underlying lead or ends a round early.
 
-| Shape | Solid | Energy | Base damage |
-| --- | --- | --- | --- |
-| Tetra | Tetrahedron | 3 | 6 |
-| Cube | Cube | 4 | 8 |
-| Prism | Pentagonal prism | 5 | 10 |
-| Octa | Octahedron | 6 | 12 |
-| Crown | Heptagonal prism | 7 | 14 |
-| Nova | Icosahedron | 8 | 16 |
+## Visual language
 
-Energy is a fixed gameplay tier, not the number of a solid's faces. Larger displayed solids indicate stronger attacks.
+Energy 1 is a spark treatment; energy 2 is a sphere. Nicknames identify the other silhouettes; formal geometry names are in the field guide. These are initial art choices for playtesting.
+
+Small energy digits face the camera and brighten on selection. Crystal 10–13 carry 2–5 central diamond marks; Gold 2 has a spade mark. Point marks are independent of energy digits.
+
+Body color identifies suits. Ownership uses separate rings and A/S indicators. Mixed-suit fusion uses a neutral body with source-family arcs; selecting a formation reveals every source shape and its point marks. A Gold 2 + Crystal 10 fusion has energy 12 and three stored special points, not four newly created diamond points.
+
+The arena supports direct picking, an orbit camera, capture collection trails, literal mesh morphs, and Suipi shockwaves. Sound starts muted; reduced-motion preferences shorten movement. If hardware 3D fails, labeled controls still support the same game.
 
 ## Architecture
 
-- `web/engine/src/battle.rs`: combat state, health, damage, reserve deck, rival, saves, and battle events. Uses the upstream Suipi `State` and shared adapter's legal move generator; original upstream rules are unchanged.
-- `src/bridge.ts`: typed browser-to-WASM transport.
-- `src/arena.ts`: procedural geometry, scene picking, orbital camera, neon glow, attack projectiles, forge convergence, shattering particles, and Suipi shockwaves.
-- `src/main.ts`: accessible controls, interaction state, ordered event playback, dialogs, local persistence.
-- `src/types.ts`: frontend state/event contracts and shape identities.
+- web/engine/src/battle.rs: 52-shape setup, cumulative scoring, rounds, rival, events, persistence.
+- src/pile.rs and src/state.rs: opt-in build ceilings; classic callers still default to ten.
+- web/engine/src/lib.rs: shared move generation parameterized by numeric ceiling.
+- battle/src/bridge.ts: typed transport to WebAssembly.
+- battle/src/arena.ts: procedural solids, suit colors, point marks, ownership, picking, morphs.
+- battle/src/main.ts: controls, point line, round transitions, formation inspection, Scorebook.
+- battle/src/types.ts: state contracts, suit identities, nicknames, formal geometry names.
 
-Rust resolves the complete human/rival exchange before animation begins. The browser saves that resolved exchange, then displays each event in order. Reloading during animation restores the resolved state without applying damage twice. Rendering does not decide move legality or damage.
+Rust resolves the human/rival exchange before visual playback. The resolved state is saved before animations, so reload cannot apply an action twice. Round advancement is an explicit saved event. Version-2 saves are separate from old hull-combat saves.
 
-Sentinel greedily ranks legal captures, builds, and deployments using its own arsenal and the public battlefield. It does not inspect the human arsenal. This is a baseline opponent, not advanced strategy.
+Sentinel ranks captures using point-lead gain and original-shape counts; builds and deployments account for special-card exposure. It searches only its own hand and public field. It is a baseline opponent, not a deep-search AI.
 
-## Verification
+## Verify
 
-```sh
-cargo test
-cargo test --manifest-path web/engine/Cargo.toml
-cargo clippy --manifest-path web/engine/Cargo.toml
-cargo fmt --manifest-path web/engine/Cargo.toml --check
-npm run build
-npm run verify
-node web/verify.mjs
-```
+    cargo test
+    cargo test --manifest-path web/engine/Cargo.toml
+    cargo clippy --manifest-path web/engine/Cargo.toml
+    cargo fmt --check
+    cargo fmt --manifest-path web/engine/Cargo.toml --check
+    npm run build
+    npm run verify
+    node web/verify.mjs
 
-The Rust tests include card conservation and deterministic replay across sixteen combat seeds. Compiled-WASM verification runs 32 battles and checks illegal moves, damage, turn ownership, completion, exact replay after every exchange, and hijacking an exposed build. The original 12-match table verification remains available.
+Rust fixtures cover 23-point totals, numeric 11–13, mixed-suit fusion, preserved point identities, locked-group stealing, majority flips, atomic invalid moves, final pickup without a sweep, full-deck conservation, and deterministic replay.
 
-## Prototype limits
+Compiled-WASM verification plays 32 full matches (1,536 turns), checks every source identity, no-draw dealing, score calculations, round carryover, and exact replay. The classic 12-match verification remains unchanged.
 
-The battle is local and single-player. Saved state lives in browser storage; no account synchronization or remote multiplayer exists. Balance, energy tiers, and damage are initial design choices. Sound starts muted and can be enabled. Reduced-motion preferences skip scene movement and shorten event playback. Background rendering pauses. If hardware 3D fails, the same combat rules remain playable through labeled controls.
+## Current scope and defaults
 
-## License
+Local single-player and browser saves. Remote multiplayer and account synchronization remain future work. Tie handling, playing all three deals, expanded initial point-card exclusions, nicknames, and the two non-special suit palettes are documented defaults for playtesting; the agreed core rules are in docs/ORBIT_RULESET.md.
 
-Play Suipi Core retains its Apache 2.0 license and attribution. Babylon.js is Apache 2.0. The original upstream gameplay source remains unchanged; the battle is an adapter extension.
+## Attribution
+
+Play Suipi Core retains its Apache 2.0 license and attribution. The two modified upstream source files mark the Orbit extensions. Classic behavior is protected by its existing tests. Babylon.js is Apache 2.0.

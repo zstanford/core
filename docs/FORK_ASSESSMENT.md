@@ -63,3 +63,10 @@ A browser adapter and same-device table now live in `web/`. Four adapter tests p
 The project now includes a Babylon.js + TypeScript 3D combat client under `battle/`, with Rust combat extensions under `web/engine/src/battle.rs`. The original table remains available at `/classic/`. Matching, builds, grouping, and ownership still use the original Suipi state validator. Combat adds six fixed energy tiers, health, damage, sweep attacks, a finite reserve deck, and a local computer rival. The original card-game source remains unchanged.
 
 All 47 upstream tests and eight adapter/combat tests pass. Compiled-WASM combat verification completed 32 battles, checking damage, illegal moves, completion, turn ownership, saved replay, and build hijacking. The original 12-match verification still passes. Browser checks covered direct 3D picking, a Suipi strike, forge/hijack, an entire skirmish, and restoration of the completed result. Remote multiplayer remains future work.
+
+
+## November 14 update: full Suipi tug-of-war
+
+Orbit now uses the agreed 52-shape set, three rounds of eight shapes, numeric fusion through 13, four suit identities, and a shared line driven by Suipi point lead. There are 23 base points available plus one per sweep. Gold is the spade family; Crystal 10–13 have 2–5 point marks. Fusion preserves original identities and point values. Scorebook exposes held cards and live majority scoring.
+
+Classic play remains on its ten-value default through opt-in build-limit extensions. The classic test suite and 12-match verification pass. New combat fixtures and 32-match WASM verification cover full dealing, cumulative round scoring, mixed-suit fusion, final pickup, and replay. Browser checks completed all three rounds and restored the final result.

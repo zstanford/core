@@ -1,4 +1,4 @@
-//! Browser adapter. Original Play Suipi engine remains unchanged.
+//! Browser adapter. Classic defaults are preserved; Orbit opts into numeric builds through 13.
 use playsuipi_core::action::Annotation;
 use playsuipi_core::game::Game;
 use playsuipi_core::pile::Pile;
@@ -27,7 +27,7 @@ struct Item {
     hand: bool,
 }
 
-fn subsets(items: &[Item], mask: usize, target: u8) -> Vec<usize> {
+fn subsets(items: &[Item], mask: usize, target: u8, limit: u8) -> Vec<usize> {
     let first = 1usize << mask.trailing_zeros();
     let mut result = vec![];
     let mut sub = mask;
@@ -44,7 +44,7 @@ fn subsets(items: &[Item], mask: usize, target: u8) -> Vec<usize> {
                 let mut pile = chosen.last().unwrap().pile.clone();
                 let valid = chosen.iter().rev().skip(1).all(|item| {
                     let mut left = item.pile.clone();
-                    match Pile::build(&mut left, &mut pile) {
+                    match Pile::build_with_limit(&mut left, &mut pile, limit) {
                         Ok(p) => {
                             pile = p;
                             true
@@ -62,13 +62,13 @@ fn subsets(items: &[Item], mask: usize, target: u8) -> Vec<usize> {
     result
 }
 
-fn partitions(items: &[Item], mask: usize, target: u8) -> Vec<Vec<usize>> {
+fn partitions(items: &[Item], mask: usize, target: u8, limit: u8) -> Vec<Vec<usize>> {
     if mask == 0 {
         return vec![vec![]];
     }
     let mut results = vec![];
-    for subset in subsets(items, mask, target) {
-        for mut tail in partitions(items, mask ^ subset, target) {
+    for subset in subsets(items, mask, target, limit) {
+        for mut tail in partitions(items, mask ^ subset, target, limit) {
             tail.insert(0, subset);
             results.push(tail);
         }
@@ -76,13 +76,23 @@ fn partitions(items: &[Item], mask: usize, target: u8) -> Vec<Vec<usize>> {
     results
 }
 
-fn validate(state: &State, annotation: &str) -> bool {
+fn validate_with_limit(state: &State, annotation: &str, limit: u8) -> bool {
     Annotation::new(annotation.to_owned())
         .to_move()
-        .is_ok_and(|m| state.clone().apply(m).is_ok())
+        .is_ok_and(|m| state.clone().apply_with_limit(m, limit).is_ok())
 }
 
 fn choices(state: &State, hand: usize, floor: &[usize], kind: &str) -> Vec<Value> {
+    choices_with_limit(state, hand, floor, kind, 10)
+}
+
+fn choices_with_limit(
+    state: &State,
+    hand: usize,
+    floor: &[usize],
+    kind: &str,
+    limit: u8,
+) -> Vec<Value> {
     if hand >= state.player().hand.len()
         || state.player().hand[hand].is_empty()
         || floor.len() > 13
@@ -101,7 +111,7 @@ fn choices(state: &State, hand: usize, floor: &[usize], kind: &str) -> Vec<Value
     let hand_label = (hand + 1).to_string();
     if kind == "discard" {
         let annotation = format!("!{hand_label}");
-        return if floor.is_empty() && validate(state, &annotation) {
+        return if floor.is_empty() && validate_with_limit(state, &annotation, limit) {
             vec![json!({"annotation": annotation, "label": "Place card on table"})]
         } else {
             vec![]
@@ -141,7 +151,7 @@ fn choices(state: &State, hand: usize, floor: &[usize], kind: &str) -> Vec<Value
     };
     let mut results = vec![];
     for target in targets {
-        for mut groups in partitions(&items, (1 << items.len()) - 1, target) {
+        for mut groups in partitions(&items, (1 << items.len()) - 1, target, limit) {
             // Put the hand-containing expression last, so it joins the destination pile.
             groups.sort_by_key(|mask| {
                 items
@@ -167,7 +177,7 @@ fn choices(state: &State, hand: usize, floor: &[usize], kind: &str) -> Vec<Value
             } else {
                 format!("!{expression}")
             };
-            if validate(state, &annotation) {
+            if validate_with_limit(state, &annotation, limit) {
                 let grouped = groups.len() > 1;
                 results.push(json!({"annotation": annotation, "target": target,
                     "label": if kind == "capture" { "Capture selected cards".to_owned() }
@@ -388,7 +398,11 @@ mod tests {
         state.floor = vec![single(Rank::Four), single(Rank::Six), single(Rank::Ten)];
         let options = choices(&state, 0, &[0, 1, 2], "capture");
         assert_eq!(options.len(), 1);
-        assert!(validate(&state, options[0]["annotation"].as_str().unwrap()));
+        assert!(validate_with_limit(
+            &state,
+            options[0]["annotation"].as_str().unwrap(),
+            10
+        ));
     }
     #[test]
     fn build_requires_retained_capture_card() {
