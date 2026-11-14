@@ -27,3 +27,21 @@ dialog{color:#e4edf7;background:#0d1829;border:1px solid #839ab442;padding:30px;
 @media(max-width:700px){.action-bar{gap:6px;padding:6px}.action-bar select{max-width:100%;flex:1 1 100%;font-size:12px}.action-bar .primary,.action-bar .quiet{min-height:44px}}
 
 .setting-toggle{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 0;border-bottom:1px solid var(--line);font-size:14px}.setting-toggle small{display:block;color:var(--muted);font-size:11px;margin-top:6px}.setting-toggle input{width:22px;height:22px;accent-color:var(--cyan);flex-shrink:0}#developer-controls{margin-bottom:20px}#rewind-shortcut{color:var(--cyan)}
+
+/* Scale the overlay in its own viewport; the arena keeps its physical canvas size. */
+:root{--hud-scale:1}
+.hud-layer{position:absolute;inset:0 auto auto 0;width:calc(100% / var(--hud-scale));height:calc(100% / var(--hud-scale));transform:scale(var(--hud-scale));transform-origin:top left;pointer-events:none}
+.hud-layer button,.hud-layer select{pointer-events:auto}
+.setting-scale{padding:18px 0;border-bottom:1px solid var(--line)}
+.setting-scale-heading,.setting-scale-footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.setting-scale-heading{font-size:14px}.setting-scale-heading output{color:var(--cyan);font-variant-numeric:tabular-nums}
+.setting-scale p{margin:8px 0 14px;font-size:11px}.setting-scale input{width:100%;accent-color:var(--cyan);min-height:28px;cursor:pointer}
+.setting-scale-footer{font-size:10px;color:var(--muted)}.setting-scale-footer .quiet{color:var(--cyan)}
+@media(max-width:700px){.hud-layer .hand-choice{min-width:0}}
+/* At larger HUD scales, preserve space for all eight hand labels. */
+.hud-layer{container-type:inline-size}
+@container(max-width:350px){
+ .hand{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:72px;gap:0 4px;width:280px;max-width:100%;height:auto;min-height:144px}
+ .hand-choice{display:flex;align-self:end;justify-content:center;flex-direction:row;width:100%;max-width:none;height:27px;min-height:27px;gap:3px}
+ .hand-choice .energy{align-self:auto}
+}

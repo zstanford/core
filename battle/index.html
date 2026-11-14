@@ -4,7 +4,9 @@
 <body>
   <main class="app" aria-label="Orbit arena">
     <section class="battle" aria-label="3D Suipi battle">
-      <div class="stage"><canvas id="arena" tabindex="0" aria-label="3D arena. Drag to orbit, scroll to zoom. Drag hand shapes onto formations to capture or forge, or onto empty table space to deploy. Confirm the preview or Undo to return it. Tap formations first for multi-shape moves, or use Field controls."></canvas><div class="vignette"></div><div id="drag-status" class="drag-status" role="status" aria-live="polite" hidden></div><div id="battle-banner" class="battle-banner" aria-live="polite"></div><div id="loading" class="loading"><span aria-hidden="true">◈</span><h2>Entering orbit</h2><p>Preparing arena and Suipi core…</p></div></div>
+      <div class="stage"><canvas id="arena" tabindex="0" aria-label="3D arena. Drag to orbit, scroll to zoom. Drag hand shapes onto formations to capture or forge, or onto empty table space to deploy. Confirm the preview or Undo to return it. Tap formations first for multi-shape moves, or use Field controls."></canvas><div class="vignette"></div><div id="drag-status" class="drag-status" role="status" aria-live="polite" hidden></div><div id="loading" class="loading"><span aria-hidden="true">◈</span><h2>Entering orbit</h2><p>Preparing arena and Suipi core…</p></div></div>
+      <div class="hud-layer">
+      <div id="battle-banner" class="battle-banner" aria-live="polite"></div>
       <header class="hud">
         <div class="pilot you"><strong id="your-points">0<small>pts</small></strong><div><span>ASTRA</span><small id="your-counts">0 captured · 0 gold</small></div></div>
         <div class="pilot enemy"><strong id="rival-points">0<small>pts</small></strong><div><span>SENTINEL</span><small id="rival-counts">0 captured · 0 gold</small></div></div>
@@ -23,11 +25,18 @@
       </section>
       <div class="bottom-left"><span class="wordmark">◈ ORBIT</span><button id="field-button" class="quiet">Field <span id="formation-count">4</span></button><button id="rewind-shortcut" class="quiet" hidden disabled aria-label="Rewind previous turn">↶ Rewind</button><span id="save-status" class="save-status">AUTOSAVE</span></div>
       <button id="score-button" class="score-toggle quiet">Scorebook</button>
+      </div>
     </section>
   </main>
   <dialog id="field-dialog"><button class="close" aria-label="Close field controls">×</button><p class="eyebrow">SHARED FIELD</p><h2>Select formations</h2><div id="field-choices" class="field-choices" aria-label="Select battlefield formations"></div><div id="formation-detail" class="formation-detail" hidden></div><div class="field-actions"><button id="deploy-selected" class="outline" hidden>Deploy selected shape</button><button class="primary close-guide">Back to arena</button></div></dialog>
   <dialog id="menu-dialog"><button class="close" aria-label="Close game menu">×</button><p class="eyebrow">ORBIT · SUIPI REIMAGINED</p><h2>Your orbit.</h2><div class="menu-actions"><button class="primary close-guide">Resume</button><button id="help-button" class="outline">Field guide</button><button id="settings-button" class="outline">Settings</button><button id="camera-button" class="outline">Reset camera</button><button id="sound-button" class="outline" aria-pressed="false">Sound off</button><button id="fullscreen-button" class="outline">Enter full screen</button><button id="new-button" class="outline">New match</button></div><div class="credits"><a href="/classic/">Classic table</a><a href="https://github.com/playsuipi/core" target="_blank" rel="noopener">Play Suipi Core</a><a href="/LICENSE.txt" target="_blank" rel="noopener">Apache 2.0</a></div></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><button class="close" aria-label="Close settings">×</button><p class="eyebrow">SETTINGS</p><h2 id="settings-title">Your controls.</h2>
+    <div class="setting-scale">
+      <div class="setting-scale-heading"><label for="hud-scale">HUD scale</label><output id="hud-scale-value" for="hud-scale">100%</output></div>
+      <p id="hud-scale-help">Resize the scoreboard, turn information, and arena controls.</p>
+      <input id="hud-scale" type="range" min="75" max="150" step="5" value="100" aria-describedby="hud-scale-help">
+      <div class="setting-scale-footer"><span>75%</span><button id="hud-scale-reset" class="quiet" disabled>Reset to 100%</button><span>150%</span></div>
+    </div>
     <label class="setting-toggle"><span>Developer mode<small>Enable turn rewind for playtesting.</small></span><input id="developer-mode" type="checkbox" aria-describedby="rewind-help"></label>
     <p id="rewind-help">Rewind restores your hand, the battlefield, points, and round results to before your last move, including Sentinel’s response. You can rewind repeatedly and try a different move.</p>
     <div id="developer-controls" hidden><button id="rewind-turn" class="outline" disabled>Rewind previous turn</button><p id="rewind-status" role="status">No previous turns in this match.</p></div>

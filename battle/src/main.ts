@@ -14,6 +14,20 @@ let draft:{options:DraftOption[];selected:number;target:DropTarget}|null=null;
 let presentingActor:0|1=0,thinking=false;
 let developerMode=false;
 try{developerMode=localStorage.getItem('orbit-developer-mode')==='true';}catch{}
+let hudScale=100;
+try{const saved=Number(localStorage.getItem('orbit-hud-scale')??100);if(Number.isFinite(saved))hudScale=Math.max(75,Math.min(150,Math.round(saved/5)*5));}catch{}
+function applyHudScale(){
+ document.documentElement.style.setProperty('--hud-scale',String(hudScale/100));
+ el<HTMLInputElement>('hud-scale').value=String(hudScale);
+ el('hud-scale-value').textContent=hudScale+'%';
+ el('hud-scale').setAttribute('aria-valuetext',hudScale+' percent');
+ el<HTMLButtonElement>('hud-scale-reset').disabled=hudScale===100;
+}
+function setHudScale(value:number){
+ hudScale=value;applyHudScale();
+ try{localStorage.setItem('orbit-hud-scale',String(hudScale));}catch{}
+}
+applyHudScale();
 let bannerTimer:ReturnType<typeof setTimeout>;
 const label=(v:number)=>shapes[v]?.name??'Energy '+v;
 const signed=(n:number)=>(n>0?'+':'')+n;
@@ -217,6 +231,8 @@ function showScores(){
 el('help-button').onclick=()=>{closeDialogs();el<HTMLDialogElement>('guide').showModal();};el('score-button').onclick=()=>loaded&&showScores();el('new-button').onclick=()=>{if(loaded){closeDialogs();el<HTMLDialogElement>('new-dialog').showModal();}};
 el('menu-button').onclick=()=>el<HTMLDialogElement>('menu-dialog').showModal();
 el('settings-button').onclick=()=>{closeDialogs();renderDeveloper();el<HTMLDialogElement>('settings-dialog').showModal();};
+el('hud-scale').oninput=()=>setHudScale(Number(el<HTMLInputElement>('hud-scale').value));
+el('hud-scale-reset').onclick=()=>setHudScale(100);
 el('developer-mode').onchange=()=>{
  developerMode=el<HTMLInputElement>('developer-mode').checked;
  try{localStorage.setItem('orbit-developer-mode',String(developerMode));}catch{}
