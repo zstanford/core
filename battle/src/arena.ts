@@ -45,7 +45,7 @@ export class Arena {
 
   constructor(private canvas:HTMLCanvasElement,private select:(area:'hand'|'floor',index:number)=>void) {
     this.engine=new Engine(canvas,true,{preserveDrawingBuffer:true,stencil:true,powerPreference:'high-performance'});
-    this.engine.setHardwareScalingLevel(Math.max(1,devicePixelRatio/1.5));
+    this.syncResolution();
     this.scene=new Scene(this.engine);this.scene.clearColor=Color4.FromHexString('#070b19ff');
     this.scene.fogMode=Scene.FOGMODE_EXP2;this.scene.fogDensity=.013;this.scene.fogColor=Color3.FromHexString('#070b19');
     this.camera=new ArcRotateCamera('camera',-Math.PI/2,1.03,19,new Vector3(0,.4,-.2),this.scene);
@@ -65,6 +65,7 @@ export class Arena {
     this.visibility();document.addEventListener('visibilitychange',this.visibility);
     this.engine.runRenderLoop(()=>{
       if(this.stopped||this.suspended)return;
+      this.syncResolution();
       const dt=Math.min(this.engine.getDeltaTime()/1000,.05);this.clock+=dt;
       if(!this.reduced){
         for(const unit of this.units){unit.solid.rotation.y+=dt*.24;unit.solid.rotation.z=Math.sin(this.clock*.45+unit.phase)*.12;unit.solid.position.y=.85+Math.sin(this.clock*1.1+unit.phase)*.11;}
@@ -80,6 +81,13 @@ export class Arena {
       }
       this.scene.render();
     });
+  }
+
+  private syncResolution() {
+    // Babylon divides CSS size by this scale: Retina rendering needs its reciprocal.
+    // Recheck for browser zoom or moving between displays; resize only when it changes.
+    const scale=1/Math.min(window.devicePixelRatio||1,2);
+    if(this.engine.getHardwareScalingLevel()!==scale)this.engine.setHardwareScalingLevel(scale);
   }
 
   private material(name:string,color:Color3,glowing=true) {
