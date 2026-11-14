@@ -24,7 +24,14 @@ const MeshBuilder={CreateBox,CreateCylinder,CreateLines,CreateLineSystem,CreateP
 import {suits,pointMarks,type ShapeCard,type BattleState,type BattleEvent} from './types';
 import {VertexBuffer} from '@babylonjs/core/Buffers/buffer';
 
-type Unit={node:TransformNode;solid:Mesh;ring:Mesh;label:Mesh;pips:Mesh|null;labelSize:number;minPixels:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number;owner:0|1|null;color:Color3};
+type Unit={node:TransformNode;solid:Mesh;ring:Mesh;label:Mesh;pips:Mesh|null;labelSize:number;minPixels:number;layoutScale:number;base:Vector3;index:number;area:'hand'|'floor';value:number;phase:number;owner:0|1|null;color:Color3};
+export interface DragInteraction {
+  canMove:()=>boolean;
+  begin:(hand:number)=>void;
+  preview:(hand:number,target:number|null)=>{valid:boolean;text:string};
+  drop:(hand:number,target:number|null)=>void;
+  status:(text:string,valid:boolean)=>void;
+}
 const cyan=Color3.FromHexString('#54f2da'), pink=Color3.FromHexString('#ff67b8'),neutral=Color3.FromHexString('#9eacf2');
 export class Arena {
   readonly engine:Engine;
@@ -41,9 +48,18 @@ export class Arena {
   private audio?:AudioContext;
   private stopped=false;
   private suspended=false;
-  private visibility=()=>{this.suspended=document.hidden;};
+  private animating=false;
+  private dragging?:{unit:Unit;pointer:number;x:number;y:number;moved:boolean;target:number|null};
+  private suppressClickUntil=0;
+  private hoverTarget:number|null|undefined;
+  private hoverValid=false;
+  private selectedFloor:number[]=[];
+  private dropOrigin?:{index:number;position:Vector3};
+  clearDropOrigin(){this.dropOrigin=undefined;}
+  private visibility=()=>{this.suspended=document.hidden;if(this.suspended)this.cancelDrag();};
+  get isDragging(){return !!this.dragging;}
 
-  constructor(private canvas:HTMLCanvasElement,private select:(area:'hand'|'floor',index:number)=>void) {
+  constructor(private canvas:HTMLCanvasElement,private select:(area:'hand'|'floor',index:number)=>void,private interaction:DragInteraction) {
     this.engine=new Engine(canvas,true,{preserveDrawingBuffer:true,stencil:true,powerPreference:'high-performance'});
     this.syncResolution();
     this.scene=new Scene(this.engine);this.scene.clearColor=Color4.FromHexString('#070b19ff');
@@ -59,13 +75,22 @@ export class Arena {
     this.scene.onPointerObservable.add(info=>{
       if(info.type!==PointerEventTypes.POINTERPICK)return;
       const data=info.pickInfo?.pickedMesh?.metadata;
-      if(data?.area)this.select(data.area,data.index);
+      if(!this.dragging&&data?.area==='floor')this.select('floor',data.index);
     });
-    this.observer=new ResizeObserver(()=>{this.engine.resize();this.resetCamera();});this.observer.observe(canvas);
+    document.addEventListener('pointerdown',this.pointerDown,true);
+    document.addEventListener('pointermove',this.pointerMove,true);
+    document.addEventListener('pointerup',this.pointerUp,true);
+    document.addEventListener('pointercancel',this.pointerCancel,true);
+    document.addEventListener('lostpointercapture',this.pointerCancel,true);
+    document.addEventListener('keydown',this.cancelKey);
+    document.addEventListener('click',this.suppressClick,true);
+    window.addEventListener('blur',this.cancelDrag);
+    this.observer=new ResizeObserver(()=>{this.cancelDrag();this.engine.resize();this.resetCamera();});this.observer.observe(canvas);
     this.visibility();document.addEventListener('visibilitychange',this.visibility);
     this.engine.runRenderLoop(()=>{
       if(this.stopped||this.suspended)return;
       this.syncResolution();
+      this.layoutHand();
       const dt=Math.min(this.engine.getDeltaTime()/1000,.05);this.clock+=dt;
       if(!this.reduced){
         for(const unit of this.units){unit.solid.rotation.y+=dt*.24;unit.solid.rotation.z=Math.sin(this.clock*.45+unit.phase)*.12;unit.solid.position.y=.85+Math.sin(this.clock*1.1+unit.phase)*.11;}
@@ -81,6 +106,88 @@ export class Arena {
       }
       this.scene.render();
     });
+  }
+
+  private pointerPosition(e:PointerEvent){const r=this.canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+  private pick(e:PointerEvent,area:'hand'|'floor'){
+    const p=this.pointerPosition(e);
+    return this.scene.pick(p.x,p.y,m=>m.metadata?.area===area)?.pickedMesh?.metadata?.index as number|undefined;
+  }
+  private pointerDown=(e:PointerEvent)=>{
+    if(this.dragging){e.preventDefault();e.stopImmediatePropagation();return;}
+    if(e.button!==0||!this.interaction.canMove())return;
+    const button=e.target instanceof Element?e.target.closest<HTMLButtonElement>('#hand button'):null;
+    const index=button?Number(button.dataset.index):e.target===this.canvas?this.pick(e,'hand'):undefined;
+    if(index===undefined)return;
+    const unit=this.units.find(u=>u.area==='hand'&&u.index===index);if(!unit)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    this.camera.detachControl();this.camera.inertialAlphaOffset=0;this.camera.inertialBetaOffset=0;
+    this.dragging={unit,pointer:e.pointerId,x:e.clientX,y:e.clientY,moved:false,target:null};
+    this.canvas.setPointerCapture(e.pointerId);
+  };
+  private pointerMove=(e:PointerEvent)=>{
+    const d=this.dragging;if(!d||d.pointer!==e.pointerId)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    if(!d.moved){if(Math.hypot(e.clientX-d.x,e.clientY-d.y)<7)return;d.moved=true;this.interaction.begin(d.unit.index);this.canvas.classList.add('dragging');}
+    const p=this.pointerPosition(e),world=this.worldAt(p.x,p.y);
+    if(world)d.unit.node.position.copyFrom(world);
+    const target=this.pick(e,'floor')??null;
+    if(target!==this.hoverTarget){
+      d.target=target;this.hoverTarget=target;
+      const feedback=this.interaction.preview(d.unit.index,target);this.hoverValid=feedback.valid;this.interaction.status(feedback.text,feedback.valid);
+    }
+    d.unit.node.scaling.setAll(d.unit.layoutScale*1.15);
+    this.paintHover();
+  };
+  private pointerUp=(e:PointerEvent)=>{
+    const d=this.dragging;if(!d||d.pointer!==e.pointerId)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    const target=this.pick(e,'floor')??null;
+    const origin=d.unit.node.position.clone();
+    this.cancelDrag();this.suppressClickUntil=performance.now()+400;
+    this.dropOrigin=d.moved&&target!==null?{index:d.unit.index,position:origin}:undefined;
+    if(d.moved)this.interaction.drop(d.unit.index,target);else this.select('hand',d.unit.index);
+  };
+  private pointerCancel=(e:PointerEvent)=>{if(this.dragging?.pointer===e.pointerId)this.cancelDrag();};
+  private cancelKey=(e:KeyboardEvent)=>{if(e.key==='Escape'&&this.dragging){this.cancelDrag();this.suppressClickUntil=performance.now()+400;}};
+  private suppressClick=(e:MouseEvent)=>{
+    if(e.detail!==0&&performance.now()<this.suppressClickUntil&&(e.target===this.canvas||e.target instanceof Element&&e.target.closest('#hand button'))){e.preventDefault();e.stopImmediatePropagation();}
+  };
+  private cancelDrag=()=>{
+    const d=this.dragging;if(!d)return;
+    this.dragging=undefined;this.hoverTarget=undefined;this.canvas.classList.remove('dragging');
+    d.unit.node.position.copyFrom(d.unit.base);d.unit.node.scaling.setAll(d.unit.layoutScale);
+    for(const u of this.units){u.ring.scaling.setAll(1);(u.ring.material as StandardMaterial).emissiveColor=(u.owner===1?pink:u.owner===0?cyan:neutral).scale(.42);}
+    this.paintHover();
+    if(this.canvas.hasPointerCapture(d.pointer))this.canvas.releasePointerCapture(d.pointer);
+    this.camera.attachControl(this.canvas,true);this.interaction.status('',false);
+  };
+  private paintHover(){
+    for(const u of this.units)if(u.area==='floor'){
+      const hovering=u.index===this.hoverTarget;
+      u.ring.scaling.setAll(hovering?1.3:1);
+      u.ring.visibility=hovering||this.selectedFloor.includes(u.index)?1:u.owner===null?.15:.65;
+      (u.ring.material as StandardMaterial).emissiveColor=(hovering?(this.hoverValid?cyan:Color3.FromHexString('#f29883')):u.owner===1?pink:u.owner===0?cyan:neutral).scale(hovering?.9:.42);
+    }
+  }
+  private worldAt(x:number,y:number){
+    const ray=this.scene.createPickingRay(x,y,Matrix.Identity(),this.camera);
+    const t=(.85-ray.origin.y)/ray.direction.y;
+    return Number.isFinite(t)&&t>0?ray.origin.add(ray.direction.scale(t)).subtract(new Vector3(0,.85,0)):null;
+  }
+  private layoutHand(){
+    if(this.animating)return;
+    const r=this.canvas.getBoundingClientRect();
+    for(const u of this.units)if(u.area==='hand'){
+      const b=document.querySelector<HTMLButtonElement>('#hand button[data-index="'+u.index+'"]');if(!b)continue;
+      const rect=b.getBoundingClientRect(),world=this.worldAt(rect.left+rect.width/2-r.left,rect.top-r.top-35);if(!world)continue;
+      u.base.copyFrom(world);
+      const distance=Vector3.Distance(this.camera.globalPosition,world.add(new Vector3(0,.85,0)));
+      const worldPerPixel=2*distance*Math.tan(this.camera.fov/2)/Math.max(1,this.canvas.clientHeight);
+      const radius=Math.min(rect.width*.37,11+u.value*1.2);
+      u.layoutScale=worldPerPixel*radius/this.sizeFor(u.value,.72);
+      if(this.dragging?.unit!==u){u.node.position.copyFrom(world);u.node.scaling.setAll(u.layoutScale*(b.getAttribute('aria-pressed')==='true'?1.12:1));}
+    }
   }
 
   private syncResolution() {
@@ -140,6 +247,7 @@ export class Arena {
   }
   private sizeFor(value:number,scale=1){return (.24+(value-1)*.047)*scale;}
   sync(state:BattleState,hand:number|null,floor:number[]) {
+    this.cancelDrag();
     for(const u of this.units)u.node.dispose(false,true);this.units=[];
     const columns=state.floor.length<=5?Math.max(1,state.floor.length):4,rows=Math.ceil(state.floor.length/columns);
     state.floor.forEach((p,i)=>{
@@ -153,6 +261,8 @@ export class Arena {
       }
       if(p.locked){const lock=MeshBuilder.CreateTorus('locked',{diameter:1.95,thickness:.025,tessellation:48},this.scene);lock.parent=u.node;lock.position.y=.8;lock.rotation.x=Math.PI/2;lock.material=this.material('locked-mat',p.owner===0?cyan:pink);lock.isPickable=false;}
     });
+    for(const card of state.hand)this.unit('hand',card.index,card.value,Vector3.Zero(),[card],.72);
+    this.layoutHand();
     const limit=23+state.sweeps[0]+state.sweeps[1];this.lineBeacon.position.x=state.lead/limit*5;
     const mat=this.lineBeacon.material as StandardMaterial;mat.emissiveColor=(state.lead>=0?cyan:pink).scale(.8);
     this.highlight(hand,floor);
@@ -167,15 +277,16 @@ export class Arena {
     const color=this.colorFor(cards),node=new TransformNode(area+index,this.scene);node.position=base.clone();const size=this.sizeFor(value,scale);
     const solid=this.solid('shape-'+area+index,value,size);solid.parent=node;solid.position.y=.85;solid.rotation.x=.14;solid.rotation.y=value*.4;
     solid.material=this.material('shape-material',color);solid.enableEdgesRendering();solid.edgesWidth=1.8;solid.edgesColor=new Color4(color.r,color.g,color.b,1);solid.metadata={area,index};
-    const ring=MeshBuilder.CreateTorus('selection',{diameter:1.65*scale,thickness:owner===null?.018:.035,tessellation:48},this.scene);ring.parent=node;ring.position.y=.01;ring.material=this.material('ownership-material',owner===1?pink:owner===0?cyan:neutral);ring.isPickable=false;
-    const pick=MeshBuilder.CreateSphere('pick-target',{diameter:1.65*scale,segments:8},this.scene);pick.parent=node;pick.position.y=.85;pick.visibility=0;pick.metadata={area,index};
+    const ring=MeshBuilder.CreateTorus('selection',{diameter:area==='hand'?size*2.5:1.65*scale,thickness:owner===null?.018:.035,tessellation:48},this.scene);ring.parent=node;ring.position.y=.01;ring.material=this.material('ownership-material',owner===1?pink:owner===0?cyan:neutral);ring.isPickable=false;
+    const pick=MeshBuilder.CreateSphere('pick-target',{diameter:area==='hand'?size*2.5:1.65*scale,segments:8},this.scene);pick.parent=node;pick.position.y=.85;pick.visibility=0;pick.metadata={area,index};
     const label=this.textPlane('energy-'+area+index,String(value),128,128,value>=10?82:112);label.parent=node;label.position.y=.85;(label.material as StandardMaterial).alpha=.24;
     const marks=pointMarks(cards),pips=marks?this.textPlane('point-marks-'+area+index,marks,256,64,40,cards.some(c=>c.suit===3&&c.value===2)&&!cards.some(c=>c.suit===1&&c.value>=10)?'#f2c55e':'#d6e5ff'):null;
     if(pips){pips.parent=node;(pips.material as StandardMaterial).alpha=.85;}
-    const unit={node,solid,ring,label,pips,labelSize:size*.9*.75,minPixels:value>=10?24:18,base,index,area,value,phase:index*1.4,owner,color};this.units.push(unit);return unit;
+    const unit={node,solid,ring,label,pips,labelSize:size*.9*.75,minPixels:value>=10?24:18,layoutScale:1,base,index,area,value,phase:index*1.4,owner,color};this.units.push(unit);return unit;
   }
   highlight(hand:number|null,floor:number[]) {
-    for(const unit of this.units){const active=unit.area==='hand'?unit.index===hand:floor.includes(unit.index);unit.ring.visibility=active?1:unit.owner===null?.15:.65;unit.node.scaling.setAll(active?1.12:1);(unit.label.material as StandardMaterial).alpha=active?.95:.24;}
+    this.selectedFloor=[...floor];
+    for(const unit of this.units){const active=unit.area==='hand'?unit.index===hand:floor.includes(unit.index);unit.ring.visibility=active?1:unit.area==='hand'?0:unit.owner===null?.15:.65;unit.node.scaling.setAll(unit.layoutScale*(active?1.12:1));(unit.label.material as StandardMaterial).alpha=active?.95:.24;}
   }
   resetCamera(){this.camera.alpha=-Math.PI/2;this.camera.beta=1.03;this.camera.radius=Math.max(16,6.0/(Math.max(.6,this.canvas.clientWidth/this.canvas.clientHeight)*Math.tan(.4))+5);}
   setSound(enabled:boolean){this.muted=!enabled;if(enabled){this.audio??=new AudioContext();void this.audio.resume();}}
@@ -195,12 +306,19 @@ export class Arena {
     void this.tween(750,t=>shards.forEach(({mesh,delta})=>{mesh.position=position.add(delta.scale(t));mesh.scaling.setAll(1-t);mesh.rotation.x=t*6;})).then(()=>shards.forEach(s=>s.mesh.dispose(false,true)));
   }
   async animate(event:BattleEvent) {
+    this.animating=true;
+    try{
+    if(event.actor===0&&this.dropOrigin?.index===event.hand){
+      const source=this.units.find(u=>u.area==='hand'&&u.index===event.hand);
+      if(source){source.base.copyFrom(this.dropOrigin.position);source.node.position.copyFrom(source.base);}
+    }
+    this.clearDropOrigin();
     const color=event.actor===0?cyan:pink;
     const selected=this.units.filter(u=>(u.area==='floor'&&event.floor.includes(u.index))||(u.area==='hand'&&event.actor===0&&u.index===event.hand));
     if(event.kind==='capture'){
       for(const unit of selected){(unit.solid.material as StandardMaterial).emissiveColor=unit.color.scale(.65);}
       const center=new Vector3(0,1,1);this.tone(310,.4);
-      await this.tween(300,t=>selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(1-.65*t);u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;}));
+      await this.tween(300,t=>selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(u.layoutScale*(1-.65*t));u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;}));
       const projectile=this.solid('captured-energy',event.value,this.sizeFor(event.value));projectile.position=center.clone();projectile.material=this.material('capture-material',this.colorFor([event.card]));projectile.isPickable=false;
       const target=this.cores[event.actor].position.clone(),path=MeshBuilder.CreateLines('collection-trail',{points:[center,target]},this.scene);path.color=color;path.alpha=.35;path.isPickable=false;
       await this.tween(350,t=>{projectile.position=Vector3.Lerp(center,target,t*t);projectile.rotation.y=t*6;});
@@ -210,9 +328,9 @@ export class Arena {
       const field=selected.filter(u=>u.area==='floor'),center=field[0]?.base.clone()??new Vector3(0,0,1);
       const combined=[event.card,...event.parts],resultColor=this.colorFor(combined);this.tone(520,.5);
       let ghost:Mesh|undefined;
-      {ghost=this.solid('forge-source',event.value,this.sizeFor(event.value,.72));ghost.position=new Vector3(0,.85,event.actor===0?-5.4:5.4);ghost.material=this.material('rival-source-material',this.colorFor([event.card]));ghost.isPickable=false;}
+      if(event.actor===1){ghost=this.solid('forge-source',event.value,this.sizeFor(event.value,.72));ghost.position=new Vector3(0,.85,5.4);ghost.material=this.material('rival-source-material',this.colorFor([event.card]));ghost.isPickable=false;}
       await this.tween(320,t=>{
-        selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(1-.6*t);u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;});
+        selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(u.layoutScale*(1-.6*t));u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;});
         if(ghost)ghost.position=Vector3.Lerp(new Vector3(0,.85,event.actor===0?-5.4:5.4),center.add(new Vector3(0,.85,0)),t);
       });
       selected.forEach(u=>u.node.setEnabled(false));ghost?.dispose(false,true);
@@ -225,11 +343,12 @@ export class Arena {
       const shape=this.solid('deployment',event.value,this.sizeFor(event.value,.7));shape.material=this.material('deploy-material',this.colorFor([event.card]));shape.isPickable=false;
       await this.tween(350,t=>{shape.position=new Vector3((t-.5)*1.4,1+Math.sin(t*Math.PI),((event.actor===0?-4:4)*(1-t)));shape.rotation.y=t*4;});shape.dispose(false,true);
     }
+    }finally{this.animating=false;}
   }
   projectFloor(index:number) {
     const unit=this.units.find(u=>u.area==='floor'&&u.index===index);if(!unit)return null;
     const p=Vector3.Project(unit.base.add(new Vector3(0,-.02,0)),Matrix.Identity(),this.scene.getTransformMatrix(),this.camera.viewport.toGlobal(this.engine.getRenderWidth(),this.engine.getRenderHeight()));
     return {x:p.x/this.engine.getRenderWidth()*100,y:p.y/this.engine.getRenderHeight()*100};
   }
-  dispose(){this.stopped=true;this.observer.disconnect();document.removeEventListener('visibilitychange',this.visibility);this.scene.dispose();this.engine.dispose();void this.audio?.close();}
+  dispose(){this.cancelDrag();this.stopped=true;this.observer.disconnect();document.removeEventListener('visibilitychange',this.visibility);document.removeEventListener('pointerdown',this.pointerDown,true);document.removeEventListener('pointermove',this.pointerMove,true);document.removeEventListener('pointerup',this.pointerUp,true);document.removeEventListener('pointercancel',this.pointerCancel,true);document.removeEventListener('lostpointercapture',this.pointerCancel,true);document.removeEventListener('keydown',this.cancelKey);document.removeEventListener('click',this.suppressClick,true);window.removeEventListener('blur',this.cancelDrag);this.scene.dispose();this.engine.dispose();void this.audio?.close();}
 }

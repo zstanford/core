@@ -97,3 +97,9 @@ Play Suipi Core retains its Apache 2.0 license and attribution. The two modified
 The battle fills the viewport. Scores and round markers sit at the edges; the arsenal and contextual move confirmation float above the field. Select formations directly in 3D, or open **Field** for labeled keyboard/touch controls and original-identity details. **Scorebook** opens the live points breakdown. The game menu contains the guide, camera reset, sound, new match, and browser full-screen toggle when supported.
 
 Round and match results appear as overlays. The next-deal action preserves the existing points and field. Saved matches use the same v2 format. Retina rendering continues to track display scale, capped at 2×.
+
+### Dragging the 3D hand
+
+Hand solids float above their labeled arsenal controls. Drag a solid (or its label) onto a battlefield formation. The hover ring and text preview a legal capture or forge. The active Capture/Forge action takes priority; if that action is unavailable, the other legal action is offered. A unique legal drop commits the move; multiple legal formations leave the choices visible for confirmation. Select several field formations before dragging to use them together.
+
+Empty-space and illegal drops return the solid without using a turn. Escape, pointer cancellation, window blur, and resizing cancel an in-progress drag. Camera orbit is disabled while holding a hand solid and resumes afterward. Tap selection and the Field overlay remain available for keyboard and touch access.

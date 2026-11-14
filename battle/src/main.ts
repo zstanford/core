@@ -18,6 +18,31 @@ function select(area:'hand'|'floor',index:number){
  renderSelection();
 }
 function cardDescription(c:ShapeCard){return shapeLabel(c)+' · '+c.value+' energy'+(c.points?' · '+c.points+' special '+(c.points===1?'point':'points'):'');}
+function dropOptions(index:number,target:number){
+ const targets=floor.includes(target)?[...floor]:[...floor,target];
+ const preferred=kind==='build'?'build':'capture';
+ for(const action of [preferred,preferred==='capture'?'build':'capture'] as const){
+  const request={hand:index,floor:targets,kind:action};
+  const choices=rules.call<{choices:Choice[]}>({type:'battle_choices',...request}).choices;
+  if(choices.length)return {request,choices};
+ }
+ return null;
+}
+function previewDrop(index:number,target:number|null){
+ if(target===null)return {valid:false,text:'Drop onto a field formation'};
+ const option=dropOptions(index,target);if(!option)return {valid:false,text:'No legal capture or fusion · keep a matching finisher to forge'};
+ return {valid:true,text:option.request.kind==='capture'?'Capture '+option.choices[0].captured+' shapes':'Forge '+label(option.choices[0].target??0)+' '+option.choices[0].target};
+}
+function drop(index:number,target:number|null){
+ if(!loaded||busy||state.roundOver||state.finished){arena?.clearDropOrigin();return;}
+ hand=index;
+ if(target===null){renderSelection();el('combat-log').textContent='Returned to your hand. Drop onto a formation to capture or fuse.';return;}
+ const option=dropOptions(index,target);
+ if(!option){arena?.clearDropOrigin();renderSelection();el('combat-log').textContent='Shape returned. That combination cannot capture or forge. A forge needs a matching finisher in your hand.';return;}
+ floor=option.request.floor;kind=option.request.kind;renderSelection();
+ if(option.choices.length===1)void play({...option.request,annotation:option.choices[0].annotation});
+ else {arena?.clearDropOrigin();el('combat-log').textContent='More than one legal formation. Choose an option to finish your drop.';}
+}
 function render(){
  for(const [id,i] of [['your',0],['rival',1]] as const){
   el(id+'-points').innerHTML=state.points[i]+'<small>pts</small>';
@@ -25,7 +50,7 @@ function render(){
  }
  el('deck-count').textContent='Round '+state.round+' of 3 · '+state.deck+' in reserve';
  el('turn-label').textContent=state.finished?'Match complete':busy?'Resolving…':state.roundOver?'Round '+state.round+' complete':'Your turn · Astra';
- el('arsenal-note').textContent=state.hand.length+' yours · '+state.otherCount+' rival · no draws';
+ el('arsenal-note').textContent=state.hand.length+' in hand · drag onto the field';
  el('formation-count').textContent=String(state.floor.length);
  const rival=el('rival-hand');rival.replaceChildren();for(let i=0;i<state.otherCount;i++){const mark=document.createElement('i');mark.setAttribute('aria-hidden','true');rival.append(mark);}const rivalCount=document.createElement('span');rivalCount.textContent=state.otherCount+' REMAINING';rival.append(rivalCount);
  el('round-button').hidden=!(state.roundOver||state.finished);
@@ -137,7 +162,7 @@ el('fullscreen-button').onclick=async()=>{
 };
 document.addEventListener('fullscreenchange',()=>{el('fullscreen-button').textContent=document.fullscreenElement?'Exit full screen':'Enter full screen';});
 document.addEventListener('keydown',e=>{
- if(e.key==='Enter'&&!e.repeat&&!document.querySelector('dialog[open]')&&!(e.target instanceof HTMLElement&&e.target.closest('button,a,input,select,textarea'))){
+ if(e.key==='Enter'&&!e.repeat&&!arena?.isDragging&&!document.querySelector('dialog[open]')&&!(e.target instanceof HTMLElement&&e.target.closest('button,a,input,select,textarea'))){
   const options=el('move-options').querySelectorAll<HTMLButtonElement>('button');if(options.length===1){e.preventDefault();options[0].click();}
  }
 });
@@ -153,7 +178,11 @@ try{
  await rules.init();let restored=false;
  try{const saved=JSON.parse(localStorage.getItem(storage)??'null');if(saved){state=rules.call<{battle:BattleState}>({type:'battle_restore',...saved}).battle;restored=true;}}catch{}
  if(!restored)state=rules.call<{battle:BattleState}>({type:'battle_new'}).battle;
- try{arena=new Arena(el<HTMLCanvasElement>('arena'),select);}catch(e){console.warn('3D unavailable',e);document.body.classList.add('no-3d');el('loading').innerHTML='<h2>3D unavailable</h2><p>Use Field controls and your arsenal to play.</p><button id="continue-2d" class="primary">Continue with controls</button>';el('continue-2d').onclick=()=>el('loading').hidden=true;}
+ try{arena=new Arena(el<HTMLCanvasElement>('arena'),select,{
+  canMove:()=>loaded&&!busy&&!state.roundOver&&!state.finished&&!document.querySelector('dialog[open]'),
+  begin:index=>{hand=index;renderSelection();},preview:previewDrop,drop,
+  status:(text,valid)=>{const status=el('drag-status');status.hidden=!text;status.textContent=text;status.classList.toggle('valid',valid);}
+ });}catch(e){console.warn('3D unavailable',e);document.body.classList.add('no-3d');el('loading').innerHTML='<h2>3D unavailable</h2><p>Use Field controls and your arsenal to play.</p><button id="continue-2d" class="primary">Continue with controls</button>';el('continue-2d').onclick=()=>el('loading').hidden=true;}
  loaded=true;el('combat-log').textContent=state!.last;render();save();if(arena)el('loading').hidden=true;
 }catch(e){console.error(e);el('loading').innerHTML='<h2>Could not load match</h2><p>Reload to retry the arena and rules engine.</p><button id="reload" class="primary">Reload</button>';el('reload').onclick=()=>location.reload();}
 window.addEventListener('pagehide',e=>{if(!e.persisted)arena?.dispose();});
