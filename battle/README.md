@@ -91,3 +91,9 @@ Local single-player and browser saves. Remote multiplayer and account synchroniz
 ## Attribution
 
 Play Suipi Core retains its Apache 2.0 license and attribution. The two modified upstream source files mark the Orbit extensions. Classic behavior is protected by its existing tests. Babylon.js is Apache 2.0.
+
+## Quiet arena interface
+
+The battle fills the viewport. Scores and round markers sit at the edges; the arsenal and contextual move confirmation float above the field. Select formations directly in 3D, or open **Field** for labeled keyboard/touch controls and original-identity details. **Scorebook** opens the live points breakdown. The game menu contains the guide, camera reset, sound, new match, and browser full-screen toggle when supported.
+
+Round and match results appear as overlays. The next-deal action preserves the existing points and field. Saved matches use the same v2 format. Retina rendering continues to track display scale, capped at 2×.

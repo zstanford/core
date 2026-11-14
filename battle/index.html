@@ -2,24 +2,32 @@
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#070b19"><meta name="description" content="A 3D geometric battle game built on Suipi. Match, forge, hijack, and sweep the arena."><title>Orbit — Suipi Reimagined</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%23070b19' d='M0 0h64v64H0z'/%3E%3Cpath fill='none' stroke='%2354f2da' stroke-width='3' d='m32 9 23 40H9zM32 9v25L9 49m23-15 23 15'/%3E%3C/svg%3E"></head>
 <body>
-  <div class="app">
-    <header class="topbar"><a class="wordmark" href="/" aria-label="Orbit home"><span class="orbit-mark" aria-hidden="true">◈</span> ORBIT <span class="brand-sub">SUIPI REIMAGINED</span></a><nav aria-label="Game controls"><button id="help-button" class="quiet">Field guide</button><button id="score-button" class="quiet">Scorebook</button><button id="sound-button" class="quiet" aria-pressed="false">Sound off</button><button id="new-button" class="outline">New match <span>↗</span></button></nav></header>
-    <main>
-      <div class="heading"><div><p class="eyebrow"><span class="live-dot"></span> TACTICAL GEOMETRY · THREE-ROUND TUG-OF-WAR</p><h1>Power is taken.</h1></div><div class="arena-location"><span>LAGRANGE ARENA</span><small>Low orbit · Sector 07</small></div></div>
-      <section class="battle" aria-label="3D Suipi battle">
-        <div class="hud">
-          <div class="pilot you"><div class="pilot-id"><span class="pilot-symbol">A</span><span>ASTRA<small id="your-counts">0 captured · 0 gold</small></span><strong id="your-points">0<small>pts</small></strong></div></div>
-          <div class="turn-status"><span id="turn-label">Preparing match…</span><small id="deck-count">Round 1 of 3 · 32 in reserve</small></div>
-          <div class="pilot enemy"><div class="pilot-id"><span class="pilot-symbol">V</span><span>SENTINEL<small id="rival-counts">0 captured · 0 gold</small></span><strong id="rival-points">0<small>pts</small></strong></div></div>
-        </div>
-        <div class="tug-panel"><div class="tug-labels"><span>ASTRA</span><strong id="lead-label">Even ground</strong><span>SENTINEL</span></div><div id="battle-line" class="battle-line" role="meter" aria-label="Suipi point lead" aria-valuemin="-23" aria-valuemax="23" aria-valuenow="0"><div class="line-center"></div><div id="line-pull" class="line-pull"></div><div id="line-marker" class="line-marker"></div></div><div id="round-results" class="round-results" aria-label="Round results"></div></div>
-        <div class="stage"><canvas id="arena" aria-label="3D arena. Drag to orbit, scroll to zoom. Shapes can also be selected using the buttons below."></canvas><div class="stage-corner"><span>SHARED BATTLEFIELD</span><small id="formation-count">2 UNCLAIMED SHAPES</small></div><button class="camera-button" id="camera-button" aria-label="Reset camera">Reset view</button><div id="battle-banner" class="battle-banner" aria-live="polite"></div><div id="loading" class="loading"><span class="loading-symbol">◈</span><h2>Entering orbit</h2><p>Preparing arena and combat core…</p></div></div>
-        <div class="field-controls"><span class="section-label">FIELD</span><div id="field-choices" aria-label="Select battlefield formations"></div><span class="field-note">Click shapes or use these controls</span></div>
-        <section class="dock" aria-label="Your arsenal"><div class="dock-heading"><span class="section-label">YOUR ARSENAL</span><span id="arsenal-note">One shape per turn</span></div><div id="hand" class="hand" aria-label="Shapes in your arsenal"></div><div id="formation-detail" class="formation-detail" hidden></div><div class="controls"><div class="modes" role="group" aria-label="Combat action"><button data-kind="capture" aria-pressed="true">Capture</button><button data-kind="build" aria-pressed="false">Forge / lock</button><button data-kind="discard" aria-pressed="false">Deploy</button></div><button id="hint-button" class="quiet">Find a move</button><button id="clear-button" class="quiet">Clear</button></div><div class="move-preview"><div><h2 id="move-title">Choose a shape from your arsenal</h2><p id="move-detail">Match geometry. Capture original shapes. Pull the line with Suipi points.</p></div><div id="move-options"></div></div><div class="combat-feed"><span class="feed-mark" aria-hidden="true">↳</span><p id="combat-log" role="status" aria-live="polite">Preparing battle…</p><span id="save-status">AUTOSAVE</span></div></section>
+  <main class="app" aria-label="Orbit arena">
+    <section class="battle" aria-label="3D Suipi battle">
+      <div class="stage"><canvas id="arena" tabindex="0" aria-label="3D arena. Drag to orbit, scroll to zoom. Select formations here or use Field controls."></canvas><div class="vignette"></div><div id="battle-banner" class="battle-banner" aria-live="polite"></div><div id="loading" class="loading"><span aria-hidden="true">◈</span><h2>Entering orbit</h2><p>Preparing arena and Suipi core…</p></div></div>
+      <header class="hud">
+        <div class="pilot you"><strong id="your-points">0<small>pts</small></strong><div><span>ASTRA</span><small id="your-counts">0 captured · 0 gold</small></div></div>
+        <div class="pilot enemy"><strong id="rival-points">0<small>pts</small></strong><div><span>SENTINEL</span><small id="rival-counts">0 captured · 0 gold</small></div></div>
+      </header>
+      <div class="tug-panel"><strong id="lead-label">Even ground</strong><div id="battle-line" class="battle-line" role="meter" aria-label="Suipi point lead" aria-valuemin="-23" aria-valuemax="23" aria-valuenow="0"><div class="line-center"></div><div id="line-pull" class="line-pull"></div><div id="line-marker" class="line-marker"></div></div></div>
+      <div class="round-status"><span id="deck-count">Round 1 of 3</span><div id="round-results" class="round-results" aria-label="Round results"></div></div>
+      <div id="rival-hand" class="rival-hand" aria-label="Rival shapes remaining"></div>
+      <button class="menu-toggle" id="menu-button" aria-label="Open game menu">☰</button>
+      <button id="round-button" class="round-button quiet" hidden>Round result</button>
+      <section class="dock" aria-label="Your arsenal">
+        <div class="turn-status"><span id="turn-label">Preparing match…</span><small id="arsenal-note">Eight shapes per round</small></div>
+        <div class="move-preview"><h2 id="move-title">Choose a shape</h2><p id="move-detail">Select your shape, then formations on the field.</p></div>
+        <div id="hand" class="hand" aria-label="Shapes in your arsenal"></div>
+        <div class="controls"><div class="modes" role="group" aria-label="Combat action"><button data-kind="capture" aria-pressed="true">Capture</button><button data-kind="build" aria-pressed="false">Forge / lock</button><button data-kind="discard" aria-pressed="false">Deploy</button></div><div id="move-options"></div><div class="helpers"><button id="hint-button" class="quiet">Hint</button><button id="clear-button" class="quiet">Clear</button></div></div>
+        <p id="combat-log" class="combat-log" role="status" aria-live="polite">Preparing battle…</p>
       </section>
-      <footer><span>Suipi strategy. A new dimension.</span><div><a href="/classic/">Classic table</a><span>·</span><a href="https://github.com/playsuipi/core" target="_blank" rel="noopener">Play Suipi Core</a><span>·</span><a href="/LICENSE.txt" target="_blank">Apache 2.0</a></div></footer>
-    </main>
-  </div>
+      <div class="bottom-left"><span class="wordmark">◈ ORBIT</span><button id="field-button" class="quiet">Field <span id="formation-count">4</span></button><span id="save-status" class="save-status">AUTOSAVE</span></div>
+      <button id="score-button" class="score-toggle quiet">Scorebook</button>
+    </section>
+  </main>
+  <dialog id="field-dialog"><button class="close" aria-label="Close field controls">×</button><p class="eyebrow">SHARED FIELD</p><h2>Select formations</h2><div id="field-choices" class="field-choices" aria-label="Select battlefield formations"></div><div id="formation-detail" class="formation-detail" hidden></div><button class="primary close-guide">Back to arena</button></dialog>
+  <dialog id="menu-dialog"><button class="close" aria-label="Close game menu">×</button><p class="eyebrow">ORBIT · SUIPI REIMAGINED</p><h2>Your orbit.</h2><div class="menu-actions"><button class="primary close-guide">Resume</button><button id="help-button" class="outline">Field guide</button><button id="camera-button" class="outline">Reset camera</button><button id="sound-button" class="outline" aria-pressed="false">Sound off</button><button id="fullscreen-button" class="outline">Enter full screen</button><button id="new-button" class="outline">New match</button></div><div class="credits"><a href="/classic/">Classic table</a><a href="https://github.com/playsuipi/core" target="_blank" rel="noopener">Play Suipi Core</a><a href="/LICENSE.txt" target="_blank" rel="noopener">Apache 2.0</a></div></dialog>
+  <dialog id="round-dialog"><button class="close" aria-label="Close round result">×</button><p id="round-kicker" class="eyebrow">ROUND COMPLETE</p><h2 id="round-title">Round scored</h2><div id="round-score" class="round-score"></div><p id="round-detail"></p><div id="round-actions" class="round-actions"></div></dialog>
   <dialog id="guide"><button class="close" aria-label="Close field guide">×</button><p class="eyebrow">FIELD GUIDE</p><h2>Fuse energy. Capture points.</h2>
     <p>52 shapes: energies 1–13, four color families. Four shared starters are dealt once. Each player gets eight shapes per round, over three rounds. No replacement draws during a round.</p>
     <div id="suit-guide" class="suit-guide"></div><div id="shape-guide" class="shape-guide"></div>

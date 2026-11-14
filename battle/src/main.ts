@@ -7,6 +7,7 @@ const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById
 const rules=new Rules();
 const storage='orbit-suipi-battle-v2';
 let arena:Arena|undefined,state:BattleState,hand:number|null=null,floor:number[]=[],kind:MoveKind='capture',busy=false,sound=false,loaded=false;
+let roundShown=0;
 let bannerTimer:ReturnType<typeof setTimeout>;
 const label=(v:number)=>shapes[v]?.name??'Energy '+v;
 const signed=(n:number)=>(n>0?'+':'')+n;
@@ -25,7 +26,9 @@ function render(){
  el('deck-count').textContent='Round '+state.round+' of 3 · '+state.deck+' in reserve';
  el('turn-label').textContent=state.finished?'Match complete':busy?'Resolving…':state.roundOver?'Round '+state.round+' complete':'Your turn · Astra';
  el('arsenal-note').textContent=state.hand.length+' yours · '+state.otherCount+' rival · no draws';
- el('formation-count').textContent=state.floor.length+' FORMATIONS · '+state.floor.reduce((n,p)=>n+p.parts.length,0)+' ORIGINAL SHAPES';
+ el('formation-count').textContent=String(state.floor.length);
+ const rival=el('rival-hand');rival.replaceChildren();for(let i=0;i<state.otherCount;i++){const mark=document.createElement('i');mark.setAttribute('aria-hidden','true');rival.append(mark);}const rivalCount=document.createElement('span');rivalCount.textContent=state.otherCount+' REMAINING';rival.append(rivalCount);
+ el('round-button').hidden=!(state.roundOver||state.finished);
  const limit=23+state.sweeps[0]+state.sweeps[1],position=50+state.lead/limit*43;
  el('lead-label').textContent=state.lead===0?'Even ground':(state.lead>0?'Astra':'Sentinel')+' leads by '+Math.abs(state.lead);
  el('line-marker').style.left=position+'%';
@@ -35,7 +38,7 @@ function render(){
  for(let r=1;r<=3;r++){
   const result=state.rounds.find(x=>x.round===r),pill=document.createElement('span');
   pill.className='round-pill '+(result?result.winner===0?'won':result.winner===1?'lost':'draw':r===state.round?'current':'');
-  pill.textContent='R'+r+' '+(result?(result.winner===null?'Draw':result.winner===0?'Astra':'Sentinel')+' '+result.points.join('–'):r===state.round?'In play':'Waiting');results.append(pill);
+  const text='Round '+r+': '+(result?(result.winner===null?'Draw':result.winner===0?'Astra':'Sentinel')+' '+result.points.join('–'):r===state.round?'In play':'Waiting');pill.textContent=text;pill.title=text;pill.setAttribute('aria-label',text);results.append(pill);
  }
  const field=el('field-choices');field.replaceChildren();
  for(const p of state.floor){
@@ -48,22 +51,22 @@ function render(){
  const arsenal=el('hand');arsenal.replaceChildren();
  for(const shape of state.hand){
   const button=document.createElement('button');button.className='hand-choice';button.dataset.index=String(shape.index);button.style.setProperty('--suit',suits[shape.suit].color);
-  button.setAttribute('aria-label',cardDescription(shape)+' in arsenal');
-  button.innerHTML='<span class="glyph" aria-hidden="true">'+shapes[shape.value].glyph+'</span><span class="name">'+label(shape.value)+'</span><span class="energy">'+shape.value+' ENERGY'+(shape.points?' · '+shape.points+' PT'+(shape.points===1?'':'S'):'')+'</span><span class="point-marks">'+pointMarks([shape])+'</span>';
+  button.setAttribute('aria-label',cardDescription(shape)+' in arsenal');button.title=cardDescription(shape);
+  button.innerHTML='<span class="glyph" aria-hidden="true">'+shapes[shape.value].glyph+'</span><span class="name">'+label(shape.value)+'</span><span class="energy">'+shape.value+'</span><span class="point-marks">'+pointMarks([shape])+'</span>';
   button.disabled=busy||state.finished||state.roundOver;button.onclick=()=>select('hand',shape.index);arsenal.append(button);
  }
  document.querySelectorAll<HTMLButtonElement>('[data-kind],#hint-button,#clear-button').forEach(b=>b.disabled=busy||state.finished||state.roundOver);
  el<HTMLButtonElement>('new-button').disabled=busy;arena?.sync(state,hand,floor);renderSelection();
- if(!busy&&(state.roundOver||state.finished)){
-  clearTimeout(bannerTimer);const b=el('battle-banner');b.className='battle-banner finished';
-  const result=state.rounds.at(-1);const win=state.finished?state.winner:result?.winner;
-  b.innerHTML=(state.finished?(win===null?'MATCH DRAW':win===0?'MATCH WON':'SENTINEL WINS'):(win===null?'ROUND DRAW':win===0?'ROUND WON':'ROUND LOST'))+'<small>'+state.points.join(' / ')+' points · '+state.roundWins.join('–')+' round wins</small>';
+ if(!busy&&(state.roundOver||state.finished)&&roundShown!==state.round){
+  clearTimeout(bannerTimer);el('battle-banner').className='battle-banner';el('battle-banner').replaceChildren();
+  if(!document.querySelector('dialog[open]')){roundShown=state.round;showRoundResult();}
  }
 }
 function renderSelection(){
  document.querySelectorAll<HTMLButtonElement>('#hand button').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.index)===hand)));
  document.querySelectorAll<HTMLButtonElement>('#field-choices button').forEach(b=>b.setAttribute('aria-pressed',String(floor.includes(Number(b.dataset.index)))));
  document.querySelectorAll<HTMLButtonElement>('[data-kind]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.kind===kind)));
+ el('hand').closest('.dock')!.classList.toggle('has-selection',hand!==null||floor.length>0);
  arena?.highlight(hand,floor);const options=el('move-options');options.replaceChildren();const detail=el('formation-detail');detail.replaceChildren();detail.hidden=true;
  const selected=state.floor.filter(p=>floor.includes(p.index));
  if(selected.length){detail.hidden=false;for(const p of selected){const row=document.createElement('p');row.textContent=label(p.value)+' '+p.value+(p.locked?' · locked':'')+' = '+p.parts.map(c=>suits[c.suit].name+' '+label(c.value)+' '+c.value+(c.points?' ['+pointMarks([c])+']':'')).join(' + ')+(p.points?' · '+p.points+' stored special points':'');detail.append(row);}}
@@ -73,7 +76,7 @@ function renderSelection(){
   el('move-title').textContent='Round '+state.round+' scored';el('move-detail').textContent='Line, captures, and field formations carry forward. Deal eight new shapes each.';
   const button=document.createElement('button');button.className='primary';button.textContent='Deal round '+(state.round+1)+' →';button.onclick=()=>nextRound();options.append(button);return;
  }
- if(hand===null){el('move-title').textContent='Choose a shape from your arsenal';el('move-detail').textContent=kind==='build'?'Fuse into a new solid, keeping its matching finisher.':kind==='discard'?'Deploy into shared space. No replacement draws.':'Capture special shapes and contest the total-shape and gold majorities.';return;}
+ if(hand===null){el('move-title').textContent=floor.length?'Field selected · choose your shape':'Choose a shape from your arsenal';el('move-detail').textContent=kind==='build'?'Fuse into a new solid, keeping its matching finisher.':kind==='discard'?'Deploy into shared space. No replacement draws.':'Capture special shapes and contest the total-shape and gold majorities.';return;}
  const card=state.hand.find(s=>s.index===hand);if(!card){hand=null;renderSelection();return;}
  const request={hand,floor,kind},choices=rules.call<{choices:Choice[]}>({type:'battle_choices',...request}).choices;
  el('move-title').textContent=shapeLabel(card)+' '+card.value+' selected';
@@ -97,10 +100,24 @@ async function play(move:Move){
  }catch(e){busy=false;el('combat-log').textContent=e instanceof Error?e.message:'Move failed.';if(loaded){state=rules.call<{battle:BattleState}>({type:'battle_state'}).battle;render();}}
 }
 function nextRound(){
- if(busy)return;try{state=rules.call<{battle:BattleState}>({type:'battle_next'}).battle;hand=null;floor=[];clearTimeout(bannerTimer);el('battle-banner').className='battle-banner';el('battle-banner').replaceChildren();el('combat-log').textContent=state.last;save();render();}catch(e){el('combat-log').textContent=String(e);}
+ if(busy)return;closeDialogs();try{state=rules.call<{battle:BattleState}>({type:'battle_next'}).battle;hand=null;floor=[];clearTimeout(bannerTimer);el('battle-banner').className='battle-banner';el('battle-banner').replaceChildren();el('combat-log').textContent=state.last;save();render();}catch(e){el('combat-log').textContent=String(e);}
+}
+function closeDialogs(){document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach(d=>d.close());}
+function showRoundResult(){
+ closeDialogs();const result=state.rounds.at(-1);if(!result)return;
+ const winner=state.finished?state.winner:result.winner;
+ el('round-kicker').textContent=state.finished?'THREE ROUNDS COMPLETE':'ROUND '+state.round+' COMPLETE';
+ el('round-title').textContent=winner===null?(state.finished?'The match is drawn.':'Even ground.'):(winner===0?(state.finished?'Astra wins the match.':'Astra takes the round.'):(state.finished?'Sentinel wins the match.':'Sentinel takes the round.'));
+ el('round-score').innerHTML='<div><strong>'+state.points[0]+'</strong><small>ASTRA</small></div><div><strong>'+state.points[1]+'</strong><small>SENTINEL</small></div>';
+ el('round-detail').textContent='Round wins · '+state.roundWins.join('–')+'. '+(state.finished?'Final pickup and all points are included.':'The battle line, captures, and formations carry forward.');
+ const actions=el('round-actions');actions.replaceChildren();
+ const next=document.createElement('button');next.className='primary';next.textContent=state.finished?'New match':'Deal round '+(state.round+1);next.onclick=state.finished?()=>{closeDialogs();el<HTMLDialogElement>('new-dialog').showModal();}:nextRound;actions.append(next);
+ const scores=document.createElement('button');scores.className='outline';scores.textContent='Point breakdown';scores.onclick=showScores;actions.append(scores);
+ el<HTMLDialogElement>('round-dialog').showModal();
 }
 function showScores(){
- const host=el('score-content');host.replaceChildren();const table=document.createElement('table');table.className='score-table';table.innerHTML='<thead><tr><th>Points</th><th>Astra</th><th>Sentinel</th></tr></thead>';
+ closeDialogs();
+ const host=el('score-content');host.replaceChildren();const context=document.createElement('p');context.textContent='Round '+state.round+' of 3 · Round wins '+state.roundWins.join('–');host.append(context);const table=document.createElement('table');table.className='score-table';table.innerHTML='<thead><tr><th>Points</th><th>Astra</th><th>Sentinel</th></tr></thead>';
  const body=document.createElement('tbody');
  for(const [name,key] of [['Energy-1 shapes','ones'],['Crystal 10–13','diamonds'],['Gold 2','goldTwo'],['Most shapes','mostShapes'],['Most gold','mostGold'],['Suipi sweeps','sweeps'],['Total points','points']] as const){
  const row=document.createElement('tr');for(const text of [name,String(state.scores[0][key]),String(state.scores[1][key])]){const cell=document.createElement('td');cell.textContent=text;row.append(cell);}body.append(row);}
@@ -109,11 +126,25 @@ function showScores(){
  for(const actor of [0,1] as const){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=(actor===0?'Astra':'Sentinel')+' · '+state.captures[actor]+' captured · '+state.scores[actor].gold+' gold';details.append(summary);const list=document.createElement('div');list.className='captured-list';for(const c of state.capturedCards[actor]){const chip=document.createElement('span');chip.style.color=suits[c.suit].color;chip.textContent=String(c.value)+(c.points?' '+pointMarks([c]):'');chip.title=cardDescription(c);list.append(chip);}details.append(list);host.append(details);}
  el<HTMLDialogElement>('score-dialog').showModal();
 }
-el('help-button').onclick=()=>el<HTMLDialogElement>('guide').showModal();el('score-button').onclick=()=>loaded&&showScores();el('new-button').onclick=()=>loaded&&el<HTMLDialogElement>('new-dialog').showModal();
+el('help-button').onclick=()=>{closeDialogs();el<HTMLDialogElement>('guide').showModal();};el('score-button').onclick=()=>loaded&&showScores();el('new-button').onclick=()=>{if(loaded){closeDialogs();el<HTMLDialogElement>('new-dialog').showModal();}};
+el('menu-button').onclick=()=>el<HTMLDialogElement>('menu-dialog').showModal();
+el('field-button').onclick=()=>el<HTMLDialogElement>('field-dialog').showModal();
+el('round-button').onclick=()=>showRoundResult();
+el('fullscreen-button').hidden=!document.fullscreenEnabled;
+el('fullscreen-button').onclick=async()=>{
+ try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();closeDialogs();}
+ catch{el('fullscreen-button').textContent='Full screen unavailable';}
+};
+document.addEventListener('fullscreenchange',()=>{el('fullscreen-button').textContent=document.fullscreenElement?'Exit full screen':'Enter full screen';});
+document.addEventListener('keydown',e=>{
+ if(e.key==='Enter'&&!e.repeat&&!document.querySelector('dialog[open]')&&!(e.target instanceof HTMLElement&&e.target.closest('button,a,input,select,textarea'))){
+  const options=el('move-options').querySelectorAll<HTMLButtonElement>('button');if(options.length===1){e.preventDefault();options[0].click();}
+ }
+});
 for(const dialog of document.querySelectorAll<HTMLDialogElement>('dialog')){dialog.querySelectorAll<HTMLButtonElement>('.close,.close-guide').forEach(b=>b.onclick=()=>dialog.close());dialog.addEventListener('click',e=>{if(e.target!==dialog)return;const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();});}
-el('confirm-new').onclick=()=>{if(busy)return;state=rules.call<{battle:BattleState}>({type:'battle_new'}).battle;hand=null;floor=[];kind='capture';clearTimeout(bannerTimer);el('battle-banner').className='battle-banner';el('battle-banner').replaceChildren();el('combat-log').textContent=state.last;render();save();arena?.resetCamera();el<HTMLDialogElement>('new-dialog').close();};
+el('confirm-new').onclick=()=>{if(busy)return;state=rules.call<{battle:BattleState}>({type:'battle_new'}).battle;roundShown=0;hand=null;floor=[];kind='capture';clearTimeout(bannerTimer);el('battle-banner').className='battle-banner';el('battle-banner').replaceChildren();el('combat-log').textContent=state.last;render();save();arena?.resetCamera();el<HTMLDialogElement>('new-dialog').close();};
 el('sound-button').onclick=()=>{if(!loaded)return;sound=!sound;arena?.setSound(sound);el('sound-button').textContent='Sound '+(sound?'on':'off');el('sound-button').setAttribute('aria-pressed',String(sound));};
-el('camera-button').onclick=()=>arena?.resetCamera();el('clear-button').onclick=()=>{if(!loaded)return;hand=null;floor=[];renderSelection();};
+el('camera-button').onclick=()=>{arena?.resetCamera();closeDialogs();};el('clear-button').onclick=()=>{if(!loaded)return;hand=null;floor=[];renderSelection();};
 el('hint-button').onclick=()=>{if(!loaded||busy||state.finished||state.roundOver)return;const hint=rules.call<{hint:Move|null}>({type:'battle_hint'}).hint;if(hint){hand=hint.hand;floor=hint.floor;kind=hint.kind;renderSelection();el('combat-log').textContent='Legal move highlighted. Confirm when ready.';}};
 document.querySelectorAll<HTMLButtonElement>('[data-kind]').forEach(b=>b.onclick=()=>{if(!loaded)return;kind=b.dataset.kind as MoveKind;renderSelection();});
 for(const [value,s] of Object.entries(shapes)){const cell=document.createElement('div');cell.innerHTML='<span class="glyph" aria-hidden="true">'+s.glyph+'</span><span>'+value+' · '+s.name+'<small>'+s.description+'</small></span>';el('shape-guide').append(cell);}
@@ -122,7 +153,7 @@ try{
  await rules.init();let restored=false;
  try{const saved=JSON.parse(localStorage.getItem(storage)??'null');if(saved){state=rules.call<{battle:BattleState}>({type:'battle_restore',...saved}).battle;restored=true;}}catch{}
  if(!restored)state=rules.call<{battle:BattleState}>({type:'battle_new'}).battle;
- try{arena=new Arena(el<HTMLCanvasElement>('arena'),select);}catch(e){console.warn('3D unavailable',e);el('loading').innerHTML='<h2>3D unavailable</h2><p>The same game works using the field and arsenal controls below. Try hardware graphics for the full arena.</p>';}
+ try{arena=new Arena(el<HTMLCanvasElement>('arena'),select);}catch(e){console.warn('3D unavailable',e);document.body.classList.add('no-3d');el('loading').innerHTML='<h2>3D unavailable</h2><p>Use Field controls and your arsenal to play.</p><button id="continue-2d" class="primary">Continue with controls</button>';el('continue-2d').onclick=()=>el('loading').hidden=true;}
  loaded=true;el('combat-log').textContent=state!.last;render();save();if(arena)el('loading').hidden=true;
 }catch(e){console.error(e);el('loading').innerHTML='<h2>Could not load match</h2><p>Reload to retry the arena and rules engine.</p><button id="reload" class="primary">Reload</button>';el('reload').onclick=()=>location.reload();}
 window.addEventListener('pagehide',e=>{if(!e.persisted)arena?.dispose();});

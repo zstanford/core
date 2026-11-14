@@ -49,7 +49,7 @@ export class Arena {
     this.scene=new Scene(this.engine);this.scene.clearColor=Color4.FromHexString('#070b19ff');
     this.scene.fogMode=Scene.FOGMODE_EXP2;this.scene.fogDensity=.013;this.scene.fogColor=Color3.FromHexString('#070b19');
     this.camera=new ArcRotateCamera('camera',-Math.PI/2,1.03,19,new Vector3(0,.4,-.2),this.scene);
-    this.camera.lowerRadiusLimit=14;this.camera.upperRadiusLimit=32;this.camera.lowerBetaLimit=.65;this.camera.upperBetaLimit=1.35;
+    this.camera.lowerRadiusLimit=12;this.camera.upperRadiusLimit=32;this.camera.lowerBetaLimit=.65;this.camera.upperBetaLimit=1.35;
     this.camera.lowerAlphaLimit=-Math.PI/2-.55;this.camera.upperAlphaLimit=-Math.PI/2+.55;
     this.camera.wheelPrecision=65;this.resetCamera();this.camera.panningSensibility=0;this.camera.attachControl(canvas,true);
     const light=new HemisphericLight('ambient',new Vector3(0,1,0),this.scene);light.intensity=.65;light.groundColor=Color3.FromHexString('#18213f');
@@ -111,10 +111,10 @@ export class Arena {
       const a=i/24*Math.PI*2;this.lines('tick',[new Vector3(Math.cos(a)*6.52,-.15,Math.sin(a)*6.52),new Vector3(Math.cos(a)*6.74,-.15,Math.sin(a)*6.74)],cyan,i%3===0?.6:.2);
     }
     [0,1].forEach(i=>{
-      const color=i?pink:cyan;const z=i?6.7:-7.1;
-      const core=MeshBuilder.CreatePolyhedron('core-'+i,{type:3,size:.53},this.scene);core.position=new Vector3(0,.7,z);core.material=this.material('coremat-'+i,color);core.enableEdgesRendering();core.edgesWidth=2;core.edgesColor=new Color4(color.r,color.g,color.b,1);core.isPickable=false;this.cores.push(core);
-      this.circle('core-ring',.95,-.12,z,color,.5);this.circle('core-ring2',1.18,-.12,z,color,.18);
-      for(const x of [-3,-1.5,1.5,3])this.lines('rail',[new Vector3(x,-.2,z-.5),new Vector3(x,-.2,z+.5)],color,.22);
+      const color=i?pink:cyan,x=i?6.5:-6.5;
+      const core=MeshBuilder.CreatePolyhedron('core-'+i,{type:3,size:.22},this.scene);core.position=new Vector3(x,.7,0);core.material=this.material('coremat-'+i,color);core.enableEdgesRendering();core.edgesWidth=2;core.edgesColor=new Color4(color.r,color.g,color.b,1);core.isPickable=false;this.cores.push(core);
+      this.circle('core-ring',.45,-.12,0,color,.5).position.x=x;
+      this.circle('core-ring2',.62,-.12,0,color,.18).position.x=x;
     });
     this.lines('tug-rail',[new Vector3(-5,.05,-2.2),new Vector3(5,.05,-2.2)],neutral,.45);
     this.lineBeacon=MeshBuilder.CreateSphere('point-lead',{diameter:.18,segments:12},this.scene);this.lineBeacon.position=new Vector3(0,.15,-2.2);this.lineBeacon.material=this.material('lead-material',cyan);this.lineBeacon.isPickable=false;
@@ -153,10 +153,6 @@ export class Arena {
       }
       if(p.locked){const lock=MeshBuilder.CreateTorus('locked',{diameter:1.95,thickness:.025,tessellation:48},this.scene);lock.parent=u.node;lock.position.y=.8;lock.rotation.x=Math.PI/2;lock.material=this.material('locked-mat',p.owner===0?cyan:pink);lock.isPickable=false;}
     });
-    state.hand.forEach((p,i)=>{
-      const row=Math.floor(i/4),count=Math.min(4,state.hand.length-row*4);
-      this.unit('hand',p.index,p.value,new Vector3((i%4-(count-1)/2)*2.2,0,-3.7-row*1.7),[p],.72);
-    });
     const limit=23+state.sweeps[0]+state.sweeps[1];this.lineBeacon.position.x=state.lead/limit*5;
     const mat=this.lineBeacon.material as StandardMaterial;mat.emissiveColor=(state.lead>=0?cyan:pink).scale(.8);
     this.highlight(hand,floor);
@@ -181,7 +177,7 @@ export class Arena {
   highlight(hand:number|null,floor:number[]) {
     for(const unit of this.units){const active=unit.area==='hand'?unit.index===hand:floor.includes(unit.index);unit.ring.visibility=active?1:unit.owner===null?.15:.65;unit.node.scaling.setAll(active?1.12:1);(unit.label.material as StandardMaterial).alpha=active?.95:.24;}
   }
-  resetCamera(){this.camera.alpha=-Math.PI/2;this.camera.beta=1.03;this.camera.radius=Math.max(20,6.0/(Math.max(.6,this.canvas.clientWidth/this.canvas.clientHeight)*Math.tan(.4))+5);}
+  resetCamera(){this.camera.alpha=-Math.PI/2;this.camera.beta=1.03;this.camera.radius=Math.max(16,6.0/(Math.max(.6,this.canvas.clientWidth/this.canvas.clientHeight)*Math.tan(.4))+5);}
   setSound(enabled:boolean){this.muted=!enabled;if(enabled){this.audio??=new AudioContext();void this.audio.resume();}}
   private tone(frequency:number,length:number) {
     if(this.muted||!this.audio)return;
@@ -214,10 +210,10 @@ export class Arena {
       const field=selected.filter(u=>u.area==='floor'),center=field[0]?.base.clone()??new Vector3(0,0,1);
       const combined=[event.card,...event.parts],resultColor=this.colorFor(combined);this.tone(520,.5);
       let ghost:Mesh|undefined;
-      if(event.actor===1){ghost=this.solid('rival-source',event.value,this.sizeFor(event.value,.72));ghost.position=new Vector3(0,.85,5.4);ghost.material=this.material('rival-source-material',this.colorFor([event.card]));ghost.isPickable=false;}
+      {ghost=this.solid('forge-source',event.value,this.sizeFor(event.value,.72));ghost.position=new Vector3(0,.85,event.actor===0?-5.4:5.4);ghost.material=this.material('rival-source-material',this.colorFor([event.card]));ghost.isPickable=false;}
       await this.tween(320,t=>{
         selected.forEach(u=>{u.node.position=Vector3.Lerp(u.base,center,t*t);u.node.scaling.setAll(1-.6*t);u.label.visibility=1-t;if(u.pips)u.pips.visibility=1-t;});
-        if(ghost)ghost.position=Vector3.Lerp(new Vector3(0,.85,5.4),center.add(new Vector3(0,.85,0)),t);
+        if(ghost)ghost.position=Vector3.Lerp(new Vector3(0,.85,event.actor===0?-5.4:5.4),center.add(new Vector3(0,.85,0)),t);
       });
       selected.forEach(u=>u.node.setEnabled(false));ghost?.dispose(false,true);
       const target=this.solid('morph-result',event.target??event.value,this.sizeFor(event.target??event.value));target.position=center.add(new Vector3(0,.85,0));target.rotation.x=.14;target.rotation.y=(event.target??event.value)*.4;target.material=this.material('morph-material',resultColor);target.isPickable=false;
