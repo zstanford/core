@@ -52,7 +52,7 @@ export class Arena {
   private audio?:AudioContext;
   private stopped=false;
   private suspended=false;
-  private animating=false;
+  private animationUnits=new Set<Unit>();
   private dragging?:{unit:Unit;pointer:number;x:number;y:number;moved:boolean;target:number|null};
   private suppressClickUntil=0;
   private hoverTarget:number|null|undefined;
@@ -240,9 +240,8 @@ export class Arena {
     return Number.isFinite(t)&&t>0?ray.origin.add(ray.direction.scale(t)).subtract(new Vector3(0,.85,0)):null;
   }
   private layoutHand(){
-    if(this.animating)return;
     const r=this.canvas.getBoundingClientRect();
-    for(const u of this.units)if(u.area==='hand'){
+    for(const u of this.units)if(u.area==='hand'&&!this.animationUnits.has(u)){
       const b=document.querySelector<HTMLButtonElement>('#hand button[data-index="'+u.index+'"]');if(!b)continue;
       const rect=b.getBoundingClientRect();
       const {center,worldPerPixel}=handAnchor(this.camera.getViewMatrix(),this.camera.getProjectionMatrix(),r.width,r.height,rect.left+rect.width/2-r.left,rect.top-r.top-35);
@@ -378,7 +377,6 @@ export class Arena {
     void this.tween(750,t=>shards.forEach(({mesh,delta})=>{mesh.position=position.add(delta.scale(t));mesh.scaling.setAll(1-t);mesh.rotation.x=t*6;})).then(()=>shards.forEach(s=>s.mesh.dispose(false,true)));
   }
   async animate(event:BattleEvent) {
-    this.animating=true;
     try{
     const droppedCenter=event.actor===0&&this.dropOrigin?.index===event.hand?this.dropOrigin.center.clone():null;
     if(event.actor===0&&this.dropOrigin?.index===event.hand){
@@ -388,6 +386,8 @@ export class Arena {
     this.clearDropOrigin();
     const color=event.actor===0?cyan:pink;
     const selected=this.units.filter(u=>(u.area==='floor'&&event.floor.includes(u.index))||(u.area==='hand'&&event.actor===0&&u.index===event.hand));
+    // Only the played shapes leave their anchors; the rest of the hand follows the camera.
+    this.animationUnits=new Set(selected);
     if(event.kind==='capture'){
       const target=this.cores[event.actor].position.clone();
       const origins=selected.map(unit=>({unit,center:unit.solid.getAbsolutePosition().clone(),scale:unit.node.scaling.x}));
@@ -438,7 +438,7 @@ export class Arena {
       const start=droppedCenter??new Vector3(0,1,event.actor===0?-4:4);
       await this.tween(350,t=>{shape.position=Vector3.Lerp(start,new Vector3(0,1,0),t);shape.position.y+=Math.sin(t*Math.PI)*.6;shape.rotation.y=t*4;});shape.dispose(false,true);
     }
-    }finally{this.animating=false;}
+    }finally{this.animationUnits.clear();}
   }
   projectFloor(index:number) {
     const unit=this.units.find(u=>u.area==='floor'&&u.index===index);if(!unit)return null;

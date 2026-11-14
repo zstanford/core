@@ -80,3 +80,44 @@ test('6 on 5 automatically stacks with the field 11 while retaining the hand 11'
  assert.ok(own.hand.some(c=>c.value===11),'hand 11 remains as finisher');assert.ok(!own.hand.some(c=>c.index===six));
  assert.equal(own.floor.filter(p=>p.value===11).length,1);assert.ok(!own.floor.some(p=>p.value===5));
 });
+
+test('empty-field drops capture matching values and sums instead of deploying',()=>{
+ const seed=Array(32).fill(0);seed[0]=91;
+ const state=call({type:'battle_new',seed}).battle,before=call({type:'battle_save'});
+ for(const [value,targets] of [[7,[3,4]],[11,[11]]]){
+  const card=state.hand.find(c=>c.value===value);
+  const options=dropChoices(card.index,[],{kind:'field',x:2,z:-1},query,state);
+  assert.ok(options.length);assert.ok(options.every(o=>o.move.kind==='capture'));
+  assert.deepEqual(options[0].move.floor.map(i=>state.floor.find(p=>p.index===i).value).sort((a,b)=>a-b),targets);
+  assert.ok(query(options[0].move).some(c=>c.annotation===options[0].move.annotation));
+ }
+ assert.deepEqual(call({type:'battle_save'}),before,'automatic capture remains a preview');
+ const card=state.hand.find(c=>c.value===7),option=dropChoices(card.index,[],{kind:'field',x:0,z:0},query,state)[0];
+ const result=call({type:'battle_play',...option.move});assert.ok(!result.error,result.error);
+ assert.equal(result.events[0].kind,'capture');assert.equal(result.events[0].captured,3);
+});
+
+test('automatic captures include multiple legal groups and prefer the most shapes',()=>{
+ let found=false;
+ for(let seed=0;seed<30&&!found;seed++){
+  const state=call({type:'battle_new',seed:Array(32).fill(seed)}).battle;
+  for(const card of state.hand){
+   const options=dropChoices(card.index,[],{kind:'field',x:0,z:0},query,state);
+   if(options[0]?.move.kind!=='capture')continue;
+   assert.ok(options.every(o=>o.choice.captured<=options[0].choice.captured));
+   const sum=options[0].move.floor.reduce((n,i)=>n+state.floor.find(p=>p.index===i).value,0);
+   if(sum<=card.value)continue;
+   found=true;
+   assert.ok(query(options[0].move).some(c=>c.annotation===options[0].move.annotation));
+   break;
+  }
+ }
+ assert.ok(found,'must exercise several disjoint capture groups');
+});
+
+test('empty-field drop still deploys when no capture exists',()=>{
+ const seed=Array(32).fill(0);seed[0]=91;
+ const state=call({type:'battle_new',seed}).battle,card=state.hand.find(c=>c.value===6);
+ const options=dropChoices(card.index,[],{kind:'field',x:0,z:0},query,state);
+ assert.ok(options.length);assert.ok(options.every(o=>o.move.kind==='discard'));
+});
