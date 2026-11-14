@@ -2,6 +2,7 @@ import './styles.css';
 import {Arena} from './arena';
 import {Rules} from './bridge';
 import {dropChoices,type DropTarget,type DraftOption} from './move-draft';
+import {rewindCount,rewindSave,type BattleSave} from './rewind';
 import {shapes,suits,shapeLabel,pointMarks,type BattleState,type Choice,type Move,type BattleEvent,type ShapeCard} from './types';
 
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
@@ -11,6 +12,8 @@ let arena:Arena|undefined,state:BattleState,hand:number|null=null,floor:number[]
 let roundShown=0;
 let draft:{options:DraftOption[];selected:number;target:DropTarget}|null=null;
 let presentingActor:0|1=0,thinking=false;
+let developerMode=false;
+try{developerMode=localStorage.getItem('orbit-developer-mode')==='true';}catch{}
 let bannerTimer:ReturnType<typeof setTimeout>;
 const label=(v:number)=>shapes[v]?.name??'Energy '+v;
 const signed=(n:number)=>(n>0?'+':'')+n;
@@ -26,6 +29,24 @@ function renderTurn(){
  el('turn-label').textContent=state.finished?'Match complete':state.roundOver?'Round '+state.round+' complete':busy?(presentingActor===1?(thinking?'Sentinel is choosing…':'Sentinel is moving…'):'Astra resolving…'):'Your turn · Astra';
 }
 function save(){try{localStorage.setItem(storage,JSON.stringify(rules.call({type:'battle_save'})));el('save-status').textContent='SAVED ON DEVICE';}catch{el('save-status').textContent='SAVE UNAVAILABLE';}}
+function renderDeveloper(){
+ el<HTMLInputElement>('developer-mode').checked=developerMode;
+ const count=loaded?rewindCount(rules.call<BattleSave>({type:'battle_save'})):0;
+ el('developer-controls').hidden=!developerMode;
+ el('rewind-shortcut').hidden=!developerMode;
+ for(const id of ['rewind-turn','rewind-shortcut'])el<HTMLButtonElement>(id).disabled=!loaded||busy||count===0;
+ el('rewind-status').textContent=busy?'Rewind is available after the animation finishes.':count?count+' previous '+(count===1?'turn':'turns')+' available.':'No previous turns in this match.';
+}
+function rewindTurn(){
+ if(!developerMode||!loaded||busy)return;
+ const previous=rewindSave(rules.call<BattleSave>({type:'battle_save'}));if(!previous)return;
+ try{
+  const restored=rules.call<{battle:BattleState}>({type:'battle_restore',...previous}).battle;
+  undoDraft();state=restored;roundShown=0;presentingActor=0;thinking=false;
+  clearTimeout(bannerTimer);el('battle-banner').className='battle-banner';el('battle-banner').replaceChildren();
+  closeDialogs();el('combat-log').textContent='Rewound one turn, including Sentinel’s response.';render();save();
+ }catch(e){el('rewind-status').textContent=e instanceof Error?e.message:'Could not rewind this turn.';}
+}
 function undoDraft(clearSelection=true){
  draft=null;arena?.clearDraftPreview();arena?.clearDropOrigin();
  if(clearSelection){hand=null;floor=[];}
@@ -67,6 +88,7 @@ function confirmDraft(){
  const move=draft.options[draft.selected].move;draft=null;arena?.clearDraftPreview();void play(move);
 }
 function render(){
+ renderDeveloper();
  for(const [id,i] of [['your',0],['rival',1]] as const){
   el(id+'-points').innerHTML=state.points[i]+'<small>pts</small>';
   el(id+'-counts').textContent=state.captures[i]+' captured · '+state.scores[i].gold+' gold';
@@ -194,6 +216,13 @@ function showScores(){
 }
 el('help-button').onclick=()=>{closeDialogs();el<HTMLDialogElement>('guide').showModal();};el('score-button').onclick=()=>loaded&&showScores();el('new-button').onclick=()=>{if(loaded){closeDialogs();el<HTMLDialogElement>('new-dialog').showModal();}};
 el('menu-button').onclick=()=>el<HTMLDialogElement>('menu-dialog').showModal();
+el('settings-button').onclick=()=>{closeDialogs();renderDeveloper();el<HTMLDialogElement>('settings-dialog').showModal();};
+el('developer-mode').onchange=()=>{
+ developerMode=el<HTMLInputElement>('developer-mode').checked;
+ try{localStorage.setItem('orbit-developer-mode',String(developerMode));}catch{}
+ renderDeveloper();
+};
+el('rewind-turn').onclick=rewindTurn;el('rewind-shortcut').onclick=rewindTurn;
 el('field-button').onclick=()=>el<HTMLDialogElement>('field-dialog').showModal();
 el('round-button').onclick=()=>{if(state.finished)showRoundResult();else if(state.roundOver)nextRound();};
 // Escape, backdrop, X, and the footer all emit the same native close event.

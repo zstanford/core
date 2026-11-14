@@ -100,6 +100,8 @@ Round and match results appear as overlays. The next-deal action preserves the e
 
 ### Dragging the 3D hand
 
+Developer mode is available from the game menu → Settings. Enabling it reveals Rewind in the arena and settings. Each rewind restores the previous human decision, including Sentinel’s response, and can cross round boundaries. It replays the saved seed and shortened move history through the rules engine, restoring exact hands, builds, captures, scores, and round results. History remains available after reload, even if Developer mode was previously off. Rewinding is disabled during playback; new moves after a rewind replace the discarded future. The toggle is remembered on this device. Run `npm run verify:rewind` for engine-backed rewind and branching checks.
+
 Hand solids float above their labeled arsenal controls. Drag a solid (or its label) onto a battlefield formation. The hover ring and text preview a legal capture or forge. Every legal drop stages a preview with Confirm / Undo. If capture and forge are both legal, a contextual result picker offers both. No rules state changes and Sentinel does not respond until Confirm. Undo returns the draft to the hand without using a turn. Select several field formations before dragging to use them together.
 
 Dropping on empty table space stages a legal deployment; off-table and illegal drops return the solid without using a turn. The main arena has no persistent Capture / Forge / Deploy / Hint / Clear toolbar. Escape, pointer cancellation, window blur, and resizing cancel an in-progress drag. Camera orbit is disabled while holding a hand solid and resumes afterward. Tap selection and the Field overlay remain available for keyboard and touch access.
