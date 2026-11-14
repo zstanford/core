@@ -20,3 +20,7 @@ seed.txt
 # Browser build output
 /dist/
 /web/engine/target/
+/node_modules/
+/battle/public/engine.wasm
+/battle/public/LICENSE.txt
+/battle/public/classic/

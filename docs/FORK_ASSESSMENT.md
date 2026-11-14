@@ -57,3 +57,9 @@ The intended product supports computer play, same-device play, and online friend
 Fork creation, repository checkout, remote configuration, and source inspection completed. Rust 1.99.0 and the WebAssembly target are installed. The original 47 tests, native build, and formatting checks pass. Clippy reports one existing upstream style warning. Source gameplay remains unchanged.
 
 A browser adapter and same-device table now live in `web/`. Four adapter tests pass. Compiled WebAssembly verification completed 12 matches (1,152 turns), including captures, builds, discards, sweeps, card conservation, saved replay, and score totals. Browser capture and handoff were checked interactively. Computer opponents and online rooms remain future work.
+
+## November 14 update: Orbit battle prototype
+
+The project now includes a Babylon.js + TypeScript 3D combat client under `battle/`, with Rust combat extensions under `web/engine/src/battle.rs`. The original table remains available at `/classic/`. Matching, builds, grouping, and ownership still use the original Suipi state validator. Combat adds six fixed energy tiers, health, damage, sweep attacks, a finite reserve deck, and a local computer rival. The original card-game source remains unchanged.
+
+All 47 upstream tests and eight adapter/combat tests pass. Compiled-WASM combat verification completed 32 battles, checking damage, illegal moves, completion, turn ownership, saved replay, and build hijacking. The original 12-match verification still passes. Browser checks covered direct 3D picking, a Suipi strike, forge/hijack, an entire skirmish, and restoration of the completed result. Remote multiplayer remains future work.

@@ -1,0 +1,15 @@
+{
+  "name": "orbit-suipi",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "build": "sh battle/build.sh",
+    "build:client": "vite build",
+    "verify": "node battle/verify.mjs"
+  },
+  "dependencies": { "@babylonjs/core": "^8.0.0" },
+  "devDependencies": { "typescript": "^5.9.0", "vite": "^7.0.0" }
+}

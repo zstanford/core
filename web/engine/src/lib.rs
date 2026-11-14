@@ -5,6 +5,7 @@ use playsuipi_core::pile::Pile;
 use playsuipi_core::state::State;
 use serde_json::{json, Value};
 use std::cell::RefCell;
+mod battle;
 
 #[cfg(target_arch = "wasm32")]
 mod entropy {
@@ -348,6 +349,13 @@ pub unsafe extern "C" fn request(ptr: *const u8, len: usize) -> *const u8 {
     let input = std::slice::from_raw_parts(ptr, len);
     let response = match serde_json::from_slice::<Value>(input) {
         Err(_) => json!({"error":"Invalid request."}),
+        Ok(input)
+            if input["type"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("battle_")) =>
+        {
+            battle::request(input)
+        }
         Ok(input) => TABLE.with(|table| {
             table
                 .borrow_mut()
