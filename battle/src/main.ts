@@ -35,7 +35,7 @@ function setHudScale(value:number){
 }
 applyHudScale();
 let bannerTimer:ReturnType<typeof setTimeout>;
-const label=(v:number)=>shapes[v]?.name??'Energy '+v;
+const label=(v:number)=>shapes[v]?.name??'Value '+v;
 const signed=(n:number)=>(n>0?'+':'')+n;
 const pause=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
 function renderTurn(){
@@ -77,17 +77,17 @@ function select(area:'hand'|'floor',index:number){
  if(area==='hand')hand=hand===index?null:index;else floor=floor.includes(index)?floor.filter(i=>i!==index):[...floor,index];
  if(hand!==null&&floor.length)stage(hand,{kind:'formation',index:floor.at(-1)!});else renderSelection();
 }
-function cardDescription(c:ShapeCard){return shapeLabel(c)+' · '+c.value+' energy'+(c.points?' · '+c.points+' special '+(c.points===1?'point':'points'):'');}
+function cardDescription(c:ShapeCard){return shapeLabel(c)+' · value '+c.value+(c.points?' · '+c.points+' special '+(c.points===1?'point':'points'):'');}
 function choicesFor(index:number,target:DropTarget){
  return dropChoices(index,floor,target,request=>rules.call<{choices:Choice[]}>({type:'battle_choices',...request}).choices,state);
 }
 function optionTitle(option:DraftOption){
- return option.move.kind==='capture'?(option.choice.sweep?'Suipi · ':'Capture ')+option.choice.captured+' shapes':option.move.kind==='build'?(option.autoIncluded?.length?'Stack ':'Forge ')+label(option.choice.target??0)+' '+option.choice.target:'Deploy '+label(state.hand.find(c=>c.index===option.move.hand)!.value);
+ return option.move.kind==='capture'?(option.choice.sweep?'Sweep · ':'Capture ')+option.choice.captured+' shapes':option.move.kind==='build'?(option.autoIncluded?.length?'Stack ':'Fuse ')+label(option.choice.target??0)+' '+option.choice.target:'Place '+label(state.hand.find(c=>c.index===option.move.hand)!.value);
 }
 function previewDrop(index:number,target:DropTarget){
  if(target.kind==='outside')return {valid:false,text:'Drop onto the table or a formation'};
  const options=choicesFor(index,target);
- if(!options.length)return {valid:false,text:target.kind==='field'?'Cannot deploy · matching field energy or an unfinished build':'No legal capture or fusion · keep a matching finisher to forge'};
+ if(!options.length)return {valid:false,text:target.kind==='field'?'Cannot place · matching field value or an unfinished formation':'Cannot capture or fuse · keep a matching finisher to fuse'};
  return {valid:true,text:optionTitle(options[0])+' · release to preview',targets:options[0].move.floor};
 }
 function stage(index:number,target:DropTarget){
@@ -96,7 +96,7 @@ function stage(index:number,target:DropTarget){
  const options=choicesFor(index,target);
  if(!options.length){
   draft=null;arena?.clearDraftPreview();arena?.clearDropOrigin();renderSelection();
-  el('combat-log').textContent=target.kind==='outside'?'Returned to your hand. Drop onto the table to deploy, or onto shapes to capture or forge.':target.kind==='field'?'Cannot deploy: that energy is already on the field, or your build still needs its finisher.':'Returned to your hand. That combination cannot capture or forge.';
+  el('combat-log').textContent=target.kind==='outside'?'Returned to your hand. Drop onto the field to play, or onto shapes to capture or fuse.':target.kind==='field'?'Cannot place: that value is already on the field, or your formation still needs its finisher.':'Returned to your hand. That combination cannot capture or fuse.';
   return;
  }
  floor=[...options[0].move.floor];draft={options,selected:0,target};renderSelection();
@@ -136,14 +136,14 @@ function render(){
  for(const p of state.floor){
   const button=document.createElement('button');button.className='field-choice';button.dataset.index=String(p.index);button.style.setProperty('--suit',p.suit===null?'#aab5d6':suits[p.suit].color);
   button.textContent=label(p.value)+' '+p.value+(p.locked?' ⊙':'')+(p.owner===0?' · A':p.owner===1?' · S':'');
-  button.setAttribute('aria-label',label(p.value)+' on field, energy '+p.value+', '+(p.suit===null?'mixed colors':suits[p.suit].name)+(p.owner!==null?', '+(p.owner===0?'your':'rival')+' build':'')+(p.locked?', locked':''));
+  button.setAttribute('aria-label',label(p.value)+' on field, value '+p.value+', '+(p.suit===null?'mixed colors':suits[p.suit].name)+(p.owner!==null?', '+(p.owner===0?'your':'rival')+' formation':'')+(p.locked?', locked':''));
   button.title=p.parts.map(cardDescription).join('\n');button.disabled=busy||state.finished||state.roundOver;button.onclick=()=>select('floor',p.index);field.append(button);
  }
- if(!state.floor.length){const empty=document.createElement('span');empty.className='field-note';empty.textContent=state.finished?'Battlefield cleared.':'Clear field. Next player deploys.';field.append(empty);}
+ if(!state.floor.length){const empty=document.createElement('span');empty.className='field-note';empty.textContent=state.finished?'Field cleared.':'Clear field. Next player places a shape.';field.append(empty);}
  const arsenal=el('hand');arsenal.replaceChildren();
  for(const shape of state.hand){
   const button=document.createElement('button');button.className='hand-choice';button.dataset.index=String(shape.index);button.style.setProperty('--suit',suits[shape.suit].color);
-  button.setAttribute('aria-label',cardDescription(shape)+' in arsenal');button.title=cardDescription(shape);
+  button.setAttribute('aria-label',cardDescription(shape)+' in hand');button.title=cardDescription(shape);
   button.innerHTML='<span class="glyph" aria-hidden="true">'+shapes[shape.value].glyph+'</span><span class="name">'+label(shape.value)+'</span><span class="energy">'+shape.value+'</span><span class="point-marks">'+pointMarks([shape])+'</span>';
   button.disabled=busy||state.finished||state.roundOver;button.onclick=()=>select('hand',shape.index);arsenal.append(button);
  }
@@ -167,10 +167,10 @@ function renderSelection(){
  for(const p of state.floor.filter(p=>floor.includes(p.index))){
   detail.hidden=false;const row=document.createElement('p');row.textContent=label(p.value)+' '+p.value+(p.locked?' · locked':'')+' = '+p.parts.map(c=>suits[c.suit].name+' '+label(c.value)+' '+c.value+(c.points?' ['+pointMarks([c])+']':'')).join(' + ');detail.append(row);
  }
- if(busy){el('move-title').textContent='Energy in motion';el('move-detail').textContent='Your move and the rival response are resolving.';return;}
+ if(busy){el('move-title').textContent='Shapes in motion';el('move-detail').textContent='Your move and the rival response are resolving.';return;}
  if(draft){
   const option=draft.options[draft.selected];el('move-title').textContent=optionTitle(option);
-  el('move-detail').textContent=option.move.kind==='capture'?'Point-lead shift '+signed(option.choice.shift)+(option.choice.sweep?' · Suipi sweep':''):option.move.kind==='build'?'Original colors and points stay inside. Matching finisher retained.':'This shape will enter shared space. Either player can use it.';
+  el('move-detail').textContent=option.move.kind==='capture'?'Point-lead shift '+signed(option.choice.shift)+(option.choice.sweep?' · Sweep bonus':''):option.move.kind==='build'?'Original colors and points stay inside. Matching finisher retained.':'This shape will enter shared space. Either player can use it.';
   if(option.autoIncluded?.length){
    const additions=option.move.floor.filter(i=>!option.autoIncluded!.includes(i)).map(i=>state.floor.find(p=>p.index===i)!.value);
    additions.push(state.hand.find(c=>c.index===option.move.hand)!.value);
@@ -182,12 +182,12 @@ function renderSelection(){
  }
  if(state.finished||state.roundOver){el('move-title').textContent='Round complete';el('move-detail').textContent='Open the round result to continue.';return;}
  el('move-title').textContent=hand===null?'Select field shapes for a sum':shapeLabel(state.hand.find(c=>c.index===hand)!)+' selected';
- el('move-detail').textContent=hand===null?'Drag your shape onto the selection.':'Drop onto a shape to capture or forge, or empty table space to deploy.';
+ el('move-detail').textContent=hand===null?'Drag your shape onto the selection.':'Drop onto a shape to capture or fuse, or empty field space to play.';
 }
 function announce(event:BattleEvent){
  clearTimeout(bannerTimer);const b=el('battle-banner');b.className='battle-banner '+(event.actor===1?'enemy-hit':'');
  const duration=event.kind==='capture'?(event.actor===1?2800:1700):1500;b.style.setProperty('--announcement-duration',duration+'ms');
- b.innerHTML=event.kind==='capture'?(event.sweep?'SUIPI':'CAPTURED')+'<small>'+event.captured+' original shapes · '+signed(event.shift)+' point-lead shift</small>':(event.kind==='build'?'FUSION':'DEPLOYED')+'<small>'+label(event.target??event.value)+' '+(event.target??event.value)+'</small>';
+ b.innerHTML=event.kind==='capture'?(event.sweep?'SWEEP':'CAPTURED')+'<small>'+event.captured+' original shapes · '+signed(event.shift)+' point-lead shift</small>':(event.kind==='build'?'FUSED':'PLACED')+'<small>'+label(event.target??event.value)+' '+(event.target??event.value)+'</small>';
  void b.offsetWidth;b.classList.add('show');bannerTimer=setTimeout(()=>{b.classList.remove('show');b.replaceChildren();},duration);
 }
 async function play(move:Move){
@@ -197,7 +197,7 @@ async function play(move:Move){
   presentingActor=event.actor;thinking=event.actor===1;renderTurn();
   if(event.actor===1){
    await pause(750);thinking=false;renderTurn();arena?.previewMove(event);
-   el('combat-log').textContent='Sentinel plays energy '+event.value+' · '+(event.kind==='capture'?'capturing '+event.captured+' shapes':event.kind==='build'?'forging energy '+event.target:'deploying to the field');
+   el('combat-log').textContent='Sentinel plays value '+event.value+' · '+(event.kind==='capture'?'capturing '+event.captured+' shapes':event.kind==='build'?'fusing to value '+event.target:'placing a shape on the field');
    await pause(550);
   }
   announce(event);await arena?.animate(event);state=event.state;el('combat-log').textContent=state.last;render();
@@ -219,21 +219,22 @@ function showRoundResult(){
  el('round-detail').textContent='Round wins · '+state.roundWins.join('–')+'. '+(state.finished?'Final pickup and all points are included.':'The battle line, captures, and formations carry forward.');
  const actions=el('round-actions');actions.replaceChildren();
  const next=document.createElement('button');next.className='primary';next.textContent=state.finished?'New match':'Deal round '+(state.round+1);next.onclick=state.finished?()=>{closeDialogs();el<HTMLDialogElement>('new-dialog').showModal();}:nextRound;actions.append(next);
- const scores=document.createElement('button');scores.className='outline';scores.textContent='Point breakdown';scores.onclick=showScores;actions.append(scores);
+ const scores=document.createElement('button');scores.className='outline';scores.textContent='Scoreboard';scores.onclick=showScores;actions.append(scores);
  el<HTMLDialogElement>('round-dialog').showModal();
 }
 function showScores(){
  closeDialogs();
- el('score-dialog').querySelector<HTMLButtonElement>('.close-guide')!.textContent=state.finished?'Back to match result →':state.roundOver?'Back to round result →':'Back to the arena →';
+ el('score-dialog').querySelector<HTMLButtonElement>('.close-guide')!.textContent=state.finished?'Back to match result →':state.roundOver?'Back to round result →':'Back to the field →';
  const host=el('score-content');host.replaceChildren();const context=document.createElement('p');context.textContent='Round '+state.round+' of 3 · Round wins '+state.roundWins.join('–');host.append(context);const table=document.createElement('table');table.className='score-table';table.innerHTML='<thead><tr><th>Points</th><th>Astra</th><th>Sentinel</th></tr></thead>';
  const body=document.createElement('tbody');
- for(const [name,key] of [['Energy-1 shapes','ones'],['Crystal 10–13','diamonds'],['Gold 2','goldTwo'],['Most shapes','mostShapes'],['Most gold','mostGold'],['Suipi sweeps','sweeps'],['Total points','points']] as const){
+ for(const [name,key] of [['Value-1 shapes','ones'],['Crystal 10–13','diamonds'],['Gold 2','goldTwo'],['Most shapes','mostShapes'],['Most gold','mostGold'],['Sweep bonuses','sweeps'],['Total points','points']] as const){
  const row=document.createElement('tr');for(const text of [name,String(state.scores[0][key]),String(state.scores[1][key])]){const cell=document.createElement('td');cell.textContent=text;row.append(cell);}body.append(row);}
  table.append(body);host.append(table);
  const note=document.createElement('p');note.textContent='Majority points are live: tied counts award none. There are 23 base points available, plus sweeps. Final leftover pickup occurs after round three.';host.append(note);
  for(const actor of [0,1] as const){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=(actor===0?'Astra':'Sentinel')+' · '+state.captures[actor]+' captured · '+state.scores[actor].gold+' gold';details.append(summary);const list=document.createElement('div');list.className='captured-list';for(const c of state.capturedCards[actor]){const chip=document.createElement('span');chip.style.color=suits[c.suit].color;chip.textContent=String(c.value)+(c.points?' '+pointMarks([c]):'');chip.title=cardDescription(c);list.append(chip);}details.append(list);host.append(details);}
  el<HTMLDialogElement>('score-dialog').showModal();
 }
+el('credits-button').onclick=()=>{closeDialogs();el<HTMLDialogElement>('credits-dialog').showModal();};
 el('help-button').onclick=()=>{closeDialogs();el<HTMLDialogElement>('guide').showModal();};el('score-button').onclick=()=>loaded&&showScores();el('new-button').onclick=()=>{if(loaded){closeDialogs();el<HTMLDialogElement>('new-dialog').showModal();}};
 el('menu-button').onclick=()=>el<HTMLDialogElement>('menu-dialog').showModal();
 el('settings-button').onclick=()=>{closeDialogs();renderDeveloper();el<HTMLDialogElement>('settings-dialog').showModal();};
@@ -281,7 +282,7 @@ try{
   canMove:()=>loaded&&!busy&&!state.roundOver&&!state.finished&&!document.querySelector('dialog[open]'),
   begin:index=>{if(draft){undoDraft();}hand=index;renderSelection();},preview:previewDrop,drop:stage,
   status:(text,valid)=>{const status=el('drag-status');status.hidden=!text;status.textContent=text;status.classList.toggle('valid',valid);}
- });}catch(e){console.warn('3D unavailable',e);document.body.classList.add('no-3d');el('loading').innerHTML='<h2>3D unavailable</h2><p>Use Field controls and your arsenal to play.</p><button id="continue-2d" class="primary">Continue with controls</button>';el('continue-2d').onclick=()=>el('loading').hidden=true;}
+ });}catch(e){console.warn('3D unavailable',e);document.body.classList.add('no-3d');el('loading').innerHTML='<h2>3D unavailable</h2><p>Use Field controls and your hand to play.</p><button id="continue-2d" class="primary">Continue with controls</button>';el('continue-2d').onclick=()=>el('loading').hidden=true;}
  loaded=true;el('combat-log').textContent=state!.last;render();save();if(arena)el('loading').hidden=true;
 }catch(e){console.error(e);el('loading').innerHTML='<h2>Could not load match</h2><p>Reload to retry the arena and rules engine.</p><button id="reload" class="primary">Reload</button>';el('reload').onclick=()=>location.reload();}
 window.addEventListener('pagehide',e=>{if(!e.persisted)arena?.dispose();});

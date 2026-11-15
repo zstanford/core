@@ -45,3 +45,5 @@ dialog{color:#e4edf7;background:#0d1829;border:1px solid #839ab442;padding:30px;
  .hand-choice{display:flex;align-self:end;justify-content:center;flex-direction:row;width:100%;max-width:none;height:27px;min-height:27px;gap:3px}
  .hand-choice .energy{align-self:auto}
 }
+
+.wordmark{letter-spacing:1.2px}#credits-dialog a{color:var(--cyan)}

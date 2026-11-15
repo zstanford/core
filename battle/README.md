@@ -1,6 +1,6 @@
-# Orbit: Suipi tug-of-war
+# GeoSweep
 
-A solo 3D match against Sentinel, using Babylon.js + TypeScript and a Rust/WebAssembly rules engine. The classic card table remains at /classic/.
+A solo 3D match against Sentinel, using Babylon.js + TypeScript and a Rust/WebAssembly rules engine. Player-facing terminology is documented in [the language guide](../docs/GEOSWEEP_LANGUAGE.md). The original engine attribution is available in Credits. The legacy card prototype remains at /classic/.
 
 ## Run
 

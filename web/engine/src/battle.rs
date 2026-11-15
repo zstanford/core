@@ -1,4 +1,4 @@
-//! Orbit's 52-shape, cumulative Suipi tug-of-war. Numeric builds opt in to a ceiling of 13.
+//! GeoSweep's 52-shape, cumulative point-based tug-of-war. Numeric builds opt in to a ceiling of 13.
 use super::choices_with_limit;
 use playsuipi_core::{
     action::Annotation,
@@ -244,13 +244,13 @@ impl Battle {
                 "{who} captured {} shapes. Point-lead shift: {:+}{}.",
                 o["captured"],
                 o["shift"].as_i64().unwrap(),
-                if sweep { " · SUIPI +1" } else { "" }
+                if sweep { " · Sweep +1" } else { "" }
             ),
             "build" => format!(
-                "{who} forged energy {}. Original suits and points remain inside.",
+                "{who} fused a formation at value {}. Original colors and points remain inside.",
                 o["target"]
             ),
-            _ => format!("{who} deployed energy {} into shared space.", card.value),
+            _ => format!("{who} placed a shape with value {} on the field.", card.value),
         };
         self.state.turn = !self.state.turn;
         let mut round_end = Value::Null;
@@ -376,7 +376,7 @@ impl Battle {
         self.round += 1;
         self.round_over = false;
         self.last = format!(
-            "Round {}. Eight new shapes each; the line and battlefield carry forward.",
+            "Round {}. Eight new shapes each; the battle line and field carry forward.",
             self.round
         );
         self.history.push(json!({"advance":true}));
